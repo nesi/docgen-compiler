@@ -1,0 +1,95 @@
+#!/bin/bash
+
+progname=$(basename $0)
+tmpdir=/tmp/nesi-makedoc
+
+# Ensure that some environment variables are set
+if [ -z "${NESIDOC_INFO_DIR}" ]
+then
+	echo "$progname: error: the environment variable \$NESIDOC_INFO_DIR is not set"
+	exit 1
+elif [ ! -d "${NESIDOC_INFO_DIR}" ]
+then
+	echo "$progname: ${NESIDOC_INFO_DIR}: not a directory"
+	exit 1
+fi
+
+if [ -z "${NESIDOC_VERSIONS_DIR}" ]
+then
+	echo "$progname: error: the environment variable \$NESIDOC_VERSIONS_DIR is not set"
+	exit 1
+elif [ ! -d "${NESIDOC_VERSIONS_DIR}" ]
+then
+	echo "$progname: ${NESIDOC_VERSIONS_DIR}: not a directory"
+	exit 1
+fi
+
+if [ -z "${NESIDOC_MODULELISTS_DIR}" ]
+then
+	echo "$progname: error: the environment variable \$NESIDOC_MODULELISTS_DIR is not set"
+	exit 1
+elif [ ! -d "${NESIDOC_MODULELISTS_DIR}" ]
+then
+	echo "$progname: ${NESIDOC_MODULELISTS_DIR}: not a directory"
+	exit 1
+fi
+
+mkdir -p ${tmpdir}/versions
+if [ $? -ne 0 ]
+then
+	exit 1
+fi
+
+for file in ${NESIDOC_MODULELISTS_DIR}/*
+do
+	# Get a machine name (the file name minus the extension)
+	basefile=$(basename $file)
+	machine=${basefile%.*}
+	echo $machine
+
+	while read line
+	do
+		module=$(echo $line | cut -d':' -f 1)
+		description=$(echo $line | cut -d':' -f 2-)
+		packagename=$(echo $module | cut -d'/' -f 1)
+		version=$(echo $module | cut -d'/' -f 2-)
+
+		tempversionfile="${tmpdir}/versions/${packagename}.html"
+		if [ ! -e "${tempversionfile}" ]
+		then
+			echo "<table>" > ${tempversionfile}
+			echo "  <tr>" >> ${tempversionfile}
+			echo "    <th>Module</th>" >> ${tempversionfile}
+			echo "    <th>NeSI Cluster</th>" >> ${tempversionfile}
+			echo "  </tr>" >> ${tempversionfile}
+		fi
+		echo "  <tr>" >> ${tempversionfile}
+		echo "    <td>${module}</td>" >> ${tempversionfile}
+		echo "    <td>${machine}</td>" >> ${tempversionfile}
+		echo "  </tr>" >> ${tempversionfile}
+
+	done < $file
+done
+
+for file in ${tmpdir}/versions/*
+do
+	basefile=$(basename $file)
+	packagename=${basefile%.*}
+	echo "</table>" >> ${tempversionfile}
+	permversionfile=${NESIDOC_VERSIONS_DIR}/${packagename}.html
+	if [ ! -e "${permversionfile}" ]
+	then
+		echo "Creating a new table of available versions for ${packagename}"
+	else
+		comparison=$(diff ${tempversionfile} ${permversionfile})
+		if [ $? -eq 2 ]
+		then
+			echo "$progname: error: comparison of ${tempversionfile} and ${permversionfile} failed"
+			continue
+		elif [ $? -eq 1 ]
+		then
+			echo "Available versions of ${packagename} have changed and will be updated."
+		fi
+	fi
+	#mv ${tempversionfile} ${permversionfile}
+done

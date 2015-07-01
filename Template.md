@@ -1,5 +1,5 @@
 Category: Scientific Software
-Section: Examples
+Section: Stubs
 <!-- The above lines, specifying the category and section, must be present and
 always comprising the first and second lines of the article respectively. -->
 

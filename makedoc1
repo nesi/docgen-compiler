@@ -1,7 +1,9 @@
 #!/bin/bash
 
 progname=$(basename $0)
-tmpdir=/tmp/nesi-makedoc
+packagedir=$(dirname $0)
+template=${packagedir}/Template.md
+tmpdir=/tmp/nesi-makedoc1
 
 # Ensure that some environment variables are set
 if [ -z "${NESIDOC_INFO_DIR}" ]
@@ -34,25 +36,45 @@ then
 	exit 1
 fi
 
-mkdir -p ${tmpdir}/versions
-if [ $? -ne 0 ]
+# Test for the existence of a lockfile.
+# Create one if it is absent.
+mkdir -p ${tmpdir}
+lockfile=${tmpdir}/lockfile
+if [ -e "${lockfile}" ]
 then
+	echo "$progname: error: ${lockfile} exists."
+	echo "Check to make sure that no other instance of $progname is running."
+	echo "If necessary, remove ${lockfile} or ask an administrator to do so."
 	exit 1
+else
+	touch ${lockfile}
 fi
+
+for dir in versions blurbs
+do
+	rm -r ${tmpdir}/${dir}
+	mkdir -p ${tmpdir}/${dir}
+	if [ $? -ne 0 ]
+	then
+		exit 1
+	fi
+done
 
 for file in ${NESIDOC_MODULELISTS_DIR}/*
 do
 	# Get a machine name (the file name minus the extension)
 	basefile=$(basename $file)
 	machine=${basefile%.*}
-	echo $machine
-
 	while read line
 	do
-		module=$(echo $line | cut -d':' -f 1)
-		description=$(echo $line | cut -d':' -f 2-)
-		packagename=$(echo $module | cut -d'/' -f 1)
-		version=$(echo $module | cut -d'/' -f 2-)
+		module=$(echo $line | cut -d':' -f 1 | \
+			sed -e 's/^\s\+//' | sed -e 's/\s\+$//')
+		description=$(echo $line | cut -d':' -f 2- | \
+			sed -e 's/^\s\+//' | sed -e 's/\s\+$//')
+		packagename=$(echo $module | cut -d'/' -f 1 | \
+			sed -e 's/^\s\+//' | sed -e 's/\s\+$//')
+		version=$(echo $module | cut -d'/' -f 2- | \
+			sed -e 's/^\s\+//' | sed -e 's/\s\+$//')
 
 		tempversionfile="${tmpdir}/versions/${packagename}.html"
 		if [ ! -e "${tempversionfile}" ]
@@ -68,12 +90,16 @@ do
 		echo "    <td>${machine}</td>" >> ${tempversionfile}
 		echo "  </tr>" >> ${tempversionfile}
 
-	done < $file
+		tempblurbfile="${tmpdir}/blurbs/${packagename}.md"
+		echo "## ${module} on ${machine}" >> ${tempblurbfile}
+		echo "" >> ${tempblurbfile}
+		(echo "${description}" | fold -w 80 -s) >> ${tempblurbfile}
+	done < <(sort -u -k1,1 -t ':' $file)
 done
 
-for file in ${tmpdir}/versions/*
+for tempversionfile in ${tmpdir}/versions/*
 do
-	basefile=$(basename $file)
+	basefile=$(basename $tempversionfile)
 	packagename=${basefile%.*}
 	echo "</table>" >> ${tempversionfile}
 	permversionfile=${NESIDOC_VERSIONS_DIR}/${packagename}.html
@@ -81,15 +107,34 @@ do
 	then
 		echo "Creating a new table of available versions for ${packagename}"
 	else
-		comparison=$(diff ${tempversionfile} ${permversionfile})
-		if [ $? -eq 2 ]
+		diff ${tempversionfile} ${permversionfile}
+		diffstatus=$?
+		if [ ${diffstatus} -eq 2 ]
 		then
 			echo "$progname: error: comparison of ${tempversionfile} and ${permversionfile} failed"
 			continue
-		elif [ $? -eq 1 ]
+		elif [ ${diffstatus} -eq 1 ]
 		then
 			echo "Available versions of ${packagename} have changed and will be updated."
 		fi
 	fi
-	#mv ${tempversionfile} ${permversionfile}
+	mv ${tempversionfile} ${permversionfile}
 done
+
+for tempblurbfile in ${tmpdir}/blurbs/*
+do
+	basefile=$(basename $tempblurbfile)
+	packagename=${basefile%.*}
+	perminfofile=${NESIDOC_INFO_DIR}/${packagename}.md
+	if [ ! -e ${perminfofile} ]
+	then
+		echo "Creating a new information file for $packagename"
+		awk -v f="${tempblurbfile}" 'BEGIN {while (getline < f) txt=txt $0 "\n"} /<!--This is a placeholder for a description. Do not edit.-->/ {sub("<!--This is a placeholder for a description. Do not edit.-->", txt)} 1' ${template} > ${perminfofile}
+	fi
+done
+
+for dir in versions blurbs
+do
+	rm -r ${tmpdir}/${dir}
+done
+rm ${lockfile}

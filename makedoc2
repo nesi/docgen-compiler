@@ -1,0 +1,78 @@
+#!/bin/bash
+
+progname=$(basename $0)
+tmpdir=/tmp/nesi-makedoc2
+
+# Ensure that some environment variables are set
+if [ -z "${NESIDOC_INFO_DIR}" ]
+then
+	echo "$progname: error: the environment variable \$NESIDOC_INFO_DIR is not set"
+	exit 1
+elif [ ! -d "${NESIDOC_INFO_DIR}" ]
+then
+	echo "$progname: ${NESIDOC_INFO_DIR}: not a directory"
+	exit 1
+fi
+
+if [ -z "${NESIDOC_VERSIONS_DIR}" ]
+then
+	echo "$progname: error: the environment variable \$NESIDOC_VERSIONS_DIR is not set"
+	exit 1
+elif [ ! -d "${NESIDOC_VERSIONS_DIR}" ]
+then
+	echo "$progname: ${NESIDOC_VERSIONS_DIR}: not a directory"
+	exit 1
+fi
+
+if [ -z "${ZENDESK_API_DIR}" ]
+then
+	echo "$progname: error: the environment variable \$ZENDESK_API_DIR is not set"
+	exit 1
+elif [ ! -d "${ZENDESK_API_DIR}" ]
+then
+	echo "$progname: ${ZENDESK_API_DIR}: not a directory"
+	exit 1
+fi
+
+# Test for the existence of a lockfile.
+# Create one if it is absent.
+mkdir -p ${tmpdir}
+lockfile=${tmpdir}/lockfile
+if [ -e "${lockfile}" ]
+then
+	echo "$progname: error: ${lockfile} exists."
+	echo "Check to make sure that no other instance of $progname is running."
+	echo "If necessary, remove ${lockfile} or ask an administrator to do so."
+	exit 1
+else
+	touch ${lockfile}
+fi
+
+for file in ${NESIDOC_INFO_DIR}/*
+do
+	# Get a machine name (the file name minus the extension)
+	basefile=$(basename $file)
+	packagename=${basefile%.*}
+	versionfile=${NESIDOC_VERSIONS_DIR}/${packagename}.html
+	to_upload=${tmpdir}/${basefile}
+
+	if [ ! -f ${versionfile} ]
+	then
+		echo "$progname: error: no version table found for $packagename"
+		continue
+	else
+		echo "Finalising documentation for $packagename"
+		awk -v f="${versionfile}" 'BEGIN {while (getline < f) txt=txt $0 "\n"} /<!--This is a placeholder for an automatically generated table. Do not edit.-->/ {sub("<!--This is a placeholder for an automatically generated table. Do not edit.-->", txt)} 1' ${file} > ${to_upload}
+	fi
+done
+
+echo "Uploading software documentation to Zendesk ..."
+${ZENDESK_API_DIR}/upload_articles ${tmpdir}/*.md
+upload_status=$?
+if [ ${upload_status} -eq 0 ]
+then
+	echo "Upload complete."
+else
+	echo "$progname: error: upload failed"
+fi
+rm -r ${tmpdir}

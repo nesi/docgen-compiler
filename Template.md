@@ -4,12 +4,9 @@ Section: Examples
 always comprising the first and second lines of the article respectively. -->
 
 # Description
+<!--This is a placeholder for a description. Do not edit.-->
 
-This block of text is where a brief description of the software and its
-purposes might go, perhaps obtained from "module whatis" with manual revision
-where desirable.
-
-[Click here](http://www.example.com) to go to the home page.
+[Visit the home page](http://www.example.com)
 
 # Available modules
 <!--This is a placeholder for an automatically generated table. Do not edit.-->

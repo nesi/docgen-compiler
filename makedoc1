@@ -1,72 +1,13 @@
-#!/bin/bash
 
-progname=$(basename $0)
-packagedir=$(dirname $0)
-template=${packagedir}/Template.md
-tmpdir=/tmp/nesi-makedoc1
-
-# Ensure that some environment variables are set
-if [ -z "${NESIDOC_INFO_DIR}" ]
-then
-	echo "$progname: error: the environment variable \$NESIDOC_INFO_DIR is not set"
-	exit 1
-elif [ ! -d "${NESIDOC_INFO_DIR}" ]
-then
-	echo "$progname: ${NESIDOC_INFO_DIR}: not a directory"
-	exit 1
-fi
-
-if [ -z "${NESIDOC_VERSIONS_DIR}" ]
-then
-	echo "$progname: error: the environment variable \$NESIDOC_VERSIONS_DIR is not set"
-	exit 1
-elif [ ! -d "${NESIDOC_VERSIONS_DIR}" ]
-then
-	echo "$progname: ${NESIDOC_VERSIONS_DIR}: not a directory"
-	exit 1
-fi
-
-if [ -z "${NESIDOC_MODULELISTS_DIR}" ]
-then
-	echo "$progname: error: the environment variable \$NESIDOC_MODULELISTS_DIR is not set"
-	exit 1
-elif [ ! -d "${NESIDOC_MODULELISTS_DIR}" ]
-then
-	echo "$progname: ${NESIDOC_MODULELISTS_DIR}: not a directory"
-	exit 1
-fi
-
-# Test for the existence of a lockfile.
-# Create one if it is absent.
-mkdir -p ${tmpdir}
-lockfile=${tmpdir}/lockfile
-if [ -e "${lockfile}" ]
-then
-	echo "$progname: error: ${lockfile} exists."
-	echo "Check to make sure that no other instance of $progname is running."
-	echo "If necessary, remove ${lockfile} or ask an administrator to do so."
-	exit 1
-else
-	touch ${lockfile}
-fi
-
-for dir in versions blurbs
-do
-	rm -r ${tmpdir}/${dir}
-	mkdir -p ${tmpdir}/${dir}
-	if [ $? -ne 0 ]
-	then
-		exit 1
-	fi
-done
-
-for file in ${NESIDOC_MODULELISTS_DIR}/*
+for file in ${NESIDOC_AUTOMATIC_MODULELISTS_DIR}/* ${NESIDOC_SUPPLEMENTARY_MODULELISTS_DIR}/*
 do
 	# Get a machine name (the file name minus the extension)
 	basefile=$(basename $file)
 	machine=${basefile%.*}
+	linecount=0
 	while read line
 	do
+		$((linecount++))
 		module=$(echo $line | cut -d':' -f 1 | \
 			sed -e 's/^\s\+//' | sed -e 's/\s\+$//')
 		description=$(echo $line | cut -d':' -f 2- | \
@@ -75,6 +16,23 @@ do
 			sed -e 's/^\s\+//' | sed -e 's/\s\+$//')
 		version=$(echo $module | cut -d'/' -f 2- | \
 			sed -e 's/^\s\+//' | sed -e 's/\s\+$//')
+
+		if [ -z "${module}" ]
+		then
+			echo "$file: no module found on line $linecount"
+			continue
+		elif [ -z "${packagename}" ]
+		then
+			echo "$file: no package name identified on line $linecount"
+			continue
+		elif [ -z "${version}" ]
+		then
+			echo "$file: no version identified on line $linecount"
+			continue
+		elif [ -z "${description}" ]
+		then
+			echo "$file: no package description found on line $linecount"
+		fi
 
 		tempversionfile="${tmpdir}/versions/${packagename}.html"
 		if [ ! -e "${tempversionfile}" ]
@@ -132,9 +90,3 @@ do
 		awk -v f="${tempblurbfile}" 'BEGIN {while (getline < f) txt=txt $0 "\n"} /<!--This is a placeholder for a description. Do not edit.-->/ {sub("<!--This is a placeholder for a description. Do not edit.-->", txt)} 1' ${template} > ${perminfofile}
 	fi
 done
-
-for dir in versions blurbs
-do
-	rm -r ${tmpdir}/${dir}
-done
-rm ${lockfile}

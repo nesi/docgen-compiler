@@ -1,92 +1,238 @@
+#!/usr/bin/python
 
-for file in ${NESIDOC_AUTOMATIC_MODULELISTS_DIR}/* ${NESIDOC_SUPPLEMENTARY_MODULELISTS_DIR}/*
-do
-	# Get a machine name (the file name minus the extension)
-	basefile=$(basename $file)
-	machine=${basefile%.*}
-	linecount=0
-	while read line
-	do
-		$((linecount++))
-		module=$(echo $line | cut -d':' -f 1 | \
-			sed -e 's/^\s\+//' | sed -e 's/\s\+$//')
-		description=$(echo $line | cut -d':' -f 2- | \
-			sed -e 's/^\s\+//' | sed -e 's/\s\+$//')
-		packagename=$(echo $module | cut -d'/' -f 1 | \
-			sed -e 's/^\s\+//' | sed -e 's/\s\+$//')
-		version=$(echo $module | cut -d'/' -f 2- | \
-			sed -e 's/^\s\+//' | sed -e 's/\s\+$//')
+# This is a work in progress, reimplementing makedoc1 in python.
+# Python may be easier for managing module blacklists and mappings than
+# shell script.
 
-		if [ -z "${module}" ]
-		then
-			echo "$file: no module found on line $linecount"
-			continue
-		elif [ -z "${packagename}" ]
-		then
-			echo "$file: no package name identified on line $linecount"
-			continue
-		elif [ -z "${version}" ]
-		then
-			echo "$file: no version identified on line $linecount"
-			continue
-		elif [ -z "${description}" ]
-		then
-			echo "$file: no package description found on line $linecount"
-		fi
+import os
+import filecmp
+import fnmatch
+import re
+import textwrap
 
-		tempversionfile="${tmpdir}/versions/${packagename}.html"
-		if [ ! -e "${tempversionfile}" ]
-		then
-			echo "<table>" > ${tempversionfile}
-			echo "  <tr>" >> ${tempversionfile}
-			echo "    <th>Module</th>" >> ${tempversionfile}
-			echo "    <th>NeSI Cluster</th>" >> ${tempversionfile}
-			echo "  </tr>" >> ${tempversionfile}
-		fi
-		echo "  <tr>" >> ${tempversionfile}
-		echo "    <td>${module}</td>" >> ${tempversionfile}
-		echo "    <td>${machine}</td>" >> ${tempversionfile}
-		echo "  </tr>" >> ${tempversionfile}
+progname = os.path.basename(__file__)
+packagedir = os.path.dirname(__file__)
+template = os.path.join(packagedir, "Template.md")
+exclusion_file = os.path.join(packagedir, "exclusions.txt")
+mapping_file = os.path.join(packagedir, "mappings.txt")
+tmpdir = os.path.join(os.sep, "tmp","nesi-makedoc1")
+lockfile = os.path.join(tmpdir, "lockfile")
+versiondir = os.path.join(tmpdir, "versions")
+blurbdir = os.path.join(tmpdir, "blurbs")
 
-		tempblurbfile="${tmpdir}/blurbs/${packagename}.md"
-		echo "## ${module} on ${machine}" >> ${tempblurbfile}
-		echo "" >> ${tempblurbfile}
-		(echo "${description}" | fold -w 80 -s) >> ${tempblurbfile}
-	done < <(sort -u -k1,1 -t ':' $file)
-done
+try:
+    infodir = os.environ['NESIDOC_INFO_DIR']
+    versiontabledir = os.environ['NESIDOC_VERSIONS_DIR']
+    automoddir = os.environ['NESIDOC_AUTOMOD_DIR']
+    suppmoddir = os.environ['NESIDOC_SUPPMOD_DIR']
+except KeyError, ke:
+    print "{}: error: the environment variable {} is not defined".format(progname,str(ke))
+    raise SystemExit(1)
 
-for tempversionfile in ${tmpdir}/versions/*
-do
-	basefile=$(basename $tempversionfile)
-	packagename=${basefile%.*}
-	echo "</table>" >> ${tempversionfile}
-	permversionfile=${NESIDOC_VERSIONS_DIR}/${packagename}.html
-	if [ ! -e "${permversionfile}" ]
-	then
-		echo "Creating a new table of available versions for ${packagename}"
-	else
-		diff ${tempversionfile} ${permversionfile}
-		diffstatus=$?
-		if [ ${diffstatus} -eq 2 ]
-		then
-			echo "$progname: error: comparison of ${tempversionfile} and ${permversionfile} failed"
-			continue
-		elif [ ${diffstatus} -eq 1 ]
-		then
-			echo "Available versions of ${packagename} have changed and will be updated."
-		fi
-	fi
-	mv ${tempversionfile} ${permversionfile}
-done
+exclusions = []
+with open(exclusion_file, 'r') as exclusion_fh:
+    exclusions = exclusion_fh.read().splitlines()
 
-for tempblurbfile in ${tmpdir}/blurbs/*
-do
-	basefile=$(basename $tempblurbfile)
-	packagename=${basefile%.*}
-	perminfofile=${NESIDOC_INFO_DIR}/${packagename}.md
-	if [ ! -e ${perminfofile} ]
-	then
-		echo "Creating a new information file for $packagename"
-		awk -v f="${tempblurbfile}" 'BEGIN {while (getline < f) txt=txt $0 "\n"} /<!--This is a placeholder for a description. Do not edit.-->/ {sub("<!--This is a placeholder for a description. Do not edit.-->", txt)} 1' ${template} > ${perminfofile}
-	fi
-done
+mappings = {}
+linecount = 0
+with open(mapping_file, 'r') as mapping_fh:
+    for line in mapping_fh:
+        linecount += 1
+        (key, val) = line.split()
+        if key in mappings:
+            print "{}: error: {} has multiple entries in {} -- check line {}".format(progname,key,mapping_file,linecount)
+            raise SystemExit(1)
+        mappings[key] = val
+
+for exclusion in exclusions:
+    if exclusion in mappings:
+        print """{}: error: {} should be either excluded from consideration
+or mapped to an alternative name, not both.
+Check the files {} and {}.""".format(progname, exclusion, exclusion_file, mapping_file)
+        raise SystemExit(1)
+
+if os.path.samefile(automoddir,suppmoddir):
+    print """{}: error: the environment variables 'NESIDOC_AUTOMOD_DIR' and
+'NESIDOC_SUPPMOD_DIR' must point to different directories""".format(progname)
+    raise SystemExit(1)
+
+# Create temporary directories and a lockfile if needed.
+if os.path.lexists(tmpdir) and not os.path.isdir(tmpdir):
+    print """{0}: error: {1} exists but is not a directory.
+Please remove {1} or ask an administrator to do so.""".format(progname,tmpdir)
+    raise SystemExit(1)
+
+try:
+    os.makedirs(versiondir)
+    os.makedirs(blurbdir)
+except OSError:
+    pass
+
+if os.path.lexists(lockfile):
+    print """{0}: error: {1} exists.
+Check to make sure that no other instance of {0} is running.
+If necessary, remove {1} or ask an administrator to do so.""".format(progname,lockfile)
+    raise SystemExit(1)
+open(lockfile, 'w').close()
+
+supplementary = False
+for mldir in automoddir, suppmoddir:
+    if mldir == suppmoddir:
+        supplementary = True
+    else:
+        supplementary = False
+    for mlfilename in os.listdir(mldir):
+        if fnmatch.fnmatch(mlfilename, ".*"):
+            continue
+        mlfullpath = os.path.join(mldir, mlfilename)
+        if not os.path.isfile(mlfullpath):
+            print "{}: {}: not a file".format(progname,mlfullpath)
+            continue
+        (machine, mlfileext) = os.path.splitext(mlfilename)
+        linecount = 0
+        with open(mlfullpath, 'r') as mlfilehandle:
+            seen_modules = []
+            for line in mlfilehandle:
+                module = ''
+                blurb = ''
+                packagename = ''
+                version = ''
+                linecount += 1
+                if not line:
+                    continue
+                try:
+                    (module, blurb) = re.split(r"\s*:\s*", line, 1)
+                except ValueError:
+                    module = line
+
+                if module in seen_modules:
+                    continue
+                else:
+                    seen_modules.append(module)
+
+                try:
+                    (packagename, version) = re.split(r"\s*/\s*", module, 1)
+                except ValueError:
+                    packagename = module
+
+                if not packagename:
+                    print "{}: warning: no package name found on line {} of file {}".format(progname, linecount, mlfullpath)
+                    continue
+                elif packagename in exclusions:
+                    continue
+                elif packagename in mappings:
+                    packagename = mappings[packagename]
+
+                if not version:
+                    version = "NO_VERSION"
+                if not blurb:
+                    blurb = "NO BLURB"
+
+                tempautoverfile = os.path.join(versiondir, "{}.auto".format(packagename))
+                tempsuppverfile = os.path.join(versiondir, "{}.supp".format(packagename))
+                tempblurbfile = os.path.join(blurbdir, "{}.md".format(packagename))
+
+                if supplementary:
+                    with open(tempsuppverfile, "a") as tsvfh:
+                        if os.path.getsize(tempsuppverfile) == 0:
+                            tsvfh.write("""## Additional Supported Packages
+
+<table>
+  <tr>
+    <th>Version</th>
+    <th>NeSI Cluster</th>
+  </tr>
+""")
+                            tsvfh.write("""  <tr>
+    <td>{}</td>
+    <td>{}</td>
+  </tr>
+""".format(module, machine))
+            
+                    with open(tempblurbfile, "a") as tbfh:
+                        tbfh.write("""## {} (no module) on {}
+
+{}""".format(module, machine, textwrap.wrap(blurb,80)))
+                else:
+                    with open(tempautoverfile, "a") as tavfh:
+                        if os.path.getsize(tempautoverfile) == 0:
+                            tavfh.write("""## Packages With Modules
+
+<table>
+  <tr>
+    <th>Module</th>
+    <th>NeSI Cluster</th>
+  </tr>
+""")
+                            tavfh.write("""  <tr>
+    <td>{}</td>
+    <td>{}</td>
+  </tr>
+""".format(module, machine))
+            
+                    with open(tempblurbfile, "a") as tbfh:
+                        tbfh.write("""## {} (module) on {}
+
+{}""".format(module, machine, textwrap.wrap(blurb,80)))
+
+# Cobble together an HTML version table from the automatically-generated and
+# supplementary version tables.
+# Recall that the temporary files have two extensions.
+for tempversionpart in os.listdir(versiondir):
+    if not re.match(r"^.*\.(supp|auto)$", tempversionpart):
+        print "{}: warning: unexpected temporary file (foo): {}".format(progname, tempversionpart)
+        continue
+    tempversionpath = os.path.join(versiondir, tempversionpart)
+    (packagename, ext) = os.path.splitext(tempversionpart)
+
+    tempversionwhole = os.path.join(versiondir, "{}.html".format(packagename))
+    with open(tempversionwhole, "a") as tvwfh:
+        with open(tempversionpath, "r") as tvpfh:
+            for line in tvpfh:
+                tvwfh.write(line)
+        tvwfh.write("</table>")
+    
+    os.remove(tempversionpath)
+
+for tempversionwhole in os.listdir(versiondir):
+    if not fnmatch.fnmatch(tempversionwhole, "*.html"):
+        print "{}: warning: unexpected temporary file (bar): {}".format(progname, tempversionwhole)
+        continue
+    tempversionpath = os.path.join(versiondir, tempversionwhole)
+    (packagename, ext) = os.path.splitext(tempversionwhole)
+
+    permversionfile = os.path.join(versiontabledir, "{}.html".format(packagename))
+    if not os.path.isfile(permversionfile):
+        print "Creating a new table of available versions for package {}".format(packagename)
+        os.rename(tempversionpath, permversionfile)
+    # Compare the old (permanent) and new ("temporary") files
+    elif not filecmp.cmp(tempversionpath, permversionfile, shallow=False):
+        print "Available versions of {} have changed. The documentation will be updated.".format(packagename)
+        os.rename(tempversionpath, permversionfile)
+    else:
+        os.remove(tempversionpath)
+
+for tempblurbfile in os.listdir(blurbdir):
+    if not fnmatch.fnmatch(tempblurbfile, "*.md"):
+        print "{}: warning: unexpected temporary file: {}".format(progname, tempblurbfile)
+        continue
+    tempblurbpath = os.path.join(blurbdir, tempblurbfile)
+    (packagename, ext) = os.path.splitext(tempblurbfile)
+    permblurbfile = os.path.join(infodir, tempblurbfile)
+
+    if not os.path.isfile(permblurbfile):
+        print "Creating a new information file stub for {}".format(packagename)
+        with open(tempblurbpath, 'r') as tbfh:
+            tempblurb = tbfh.read()
+        with open(permblurbfile, 'a') as pbfh:
+            with open(template, 'r') as mdtemplate:
+                for line in mdtemplate:
+                    if re.match(r"^<!--This is a placeholder for a description. Do not edit.-->$", line):
+                        line = tempblurb
+                    pbfh.write(line)
+
+    os.remove(tempblurbpath)
+
+os.rmdir(versiondir)
+os.rmdir(blurbdir)
+os.remove(lockfile)

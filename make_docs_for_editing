@@ -1,78 +1,170 @@
 #!/usr/bin/python
 
-# This is a work in progress, reimplementing makedoc1 in python.
-# Python may be easier for managing module blacklists and mappings than
-# shell script.
+# This script gathers information from the following sources:
+#  - text files containing lists of modules (from module whatis) on NeSI
+#    clusters
+#  - text files containing lists of supplementary modules for each NeSI
+#    cluster, maintained manually by staff and under Git version control
+#
+# It collects such information and generates the following as output:
+#  - HTML tables containing the versions of each package that NeSI makes
+#    available, and on which machine(s) each version may be found
+#  - Markdown files containing a documentation stub, in cases where there
+#    is no such documentation already. Such Markdown files are intended to
+#    be reviewed and (usually) edited by, firstly, the NeSI staff member
+#    who is most familiar with the package (usually, but not necessarily,
+#    the one who installed it), and secondly a member of the documentation
+#    editorial team.
+#
+# A further step (not performed by this script) will assemble the markdown
+# file once it has been reviewed and edited and the version table, and write
+# generate from the combined text a new HTML file. The script that does that
+# processing will then call the Zendesk API to upload the HTML via the REST
+# interface directly to Zendesk.
+#
+# Written by Benjamin Roberts (2015)
 
+import sys
 import os
 import filecmp
 import fnmatch
+import getopt
+import getpass
 import re
+import smtplib
+import socket
+import subprocess
 import textwrap
 
+ok = 0
+warning = 1
+critical = 2
+unknown = 3
+
+warnings = []
+info = []
+maxlength = 1024
+
 progname = os.path.basename(__file__)
-packagedir = os.path.dirname(__file__)
+packagedir = os.path.dirname(os.path.abspath(__file__))
 template = os.path.join(packagedir, "Template.md")
-exclusion_file = os.path.join(packagedir, "exclusions.txt")
-mapping_file = os.path.join(packagedir, "mappings.txt")
-tmpdir = os.path.join(os.sep, "tmp","nesi-makedoc1")
+automoddir = None
+suppmoddir = None
+infodir = None
+versiontabledir = None
+exclusion_file = None
+mapping_file = None
+truncate = False
+tmpdir = os.path.join(os.sep, "tmp", progname)
 lockfile = os.path.join(tmpdir, "lockfile")
 versiondir = os.path.join(tmpdir, "versions")
 blurbdir = os.path.join(tmpdir, "blurbs")
 
 try:
-    infodir = os.environ['NESIDOC_INFO_DIR']
-    versiontabledir = os.environ['NESIDOC_VERSIONS_DIR']
-    automoddir = os.environ['NESIDOC_AUTOMOD_DIR']
-    suppmoddir = os.environ['NESIDOC_SUPPMOD_DIR']
-except KeyError, ke:
-    print "{}: error: the environment variable {} is not defined".format(progname,str(ke))
-    raise SystemExit(1)
+    opts, args = getopt.getopt(sys.argv[1:], "a:hi:m:s:tv:x:", ["automatic-modules-dir=", "help", "package-info-dir=", "mapping-file=", "supplementary-modules-dir=", "truncate", "version-table-dir=", "exclusion-file="])
+except getopt.GetoptError as err:
+    print str(err)
+    usage()
+    raise SystemExit(critical)
+
+for (opt, arg) in opts:
+    if opt in ("-a", "--automatic-modules-dir"):
+        automoddir = arg
+    elif opt in ("-h", "--help"):
+        usage()
+        raise SystemExit(ok)
+    elif opt in ("-i", "--package-info-dir"):
+        infodir = arg
+    elif opt in ("-m", "--mapping-file"):
+        mapping_file = arg
+    elif opt in ("-s", "--supplementary-modules-dir"):
+        suppmoddir = arg
+    elif opt in ("-t", "--truncate"):
+        truncate = True
+    elif opt in ("-v", "--version-table-dir"):
+        versiontabledir = arg
+    elif opt in ("-x", "--exclusion-file"):
+        exclusion_file = arg
+    else:
+        assert False, "Unhandled option: {}".format(opt)
 
 exclusions = []
-with open(exclusion_file, 'r') as exclusion_fh:
-    exclusions = exclusion_fh.read().splitlines()
+if not exclusion_file:
+    print "Please specify an exclusion file using the -x flag"
+    raise SystemExit(critical)
+elif not os.path.isfile(exclusion_file):
+    print "{}: not a file".format(exclusion_file)
+    raise SystemExit(critical)
+else:
+    with open(exclusion_file, 'r') as exclusion_fh:
+        exclusions = exclusion_fh.read().splitlines()
 
 mappings = {}
 linecount = 0
-with open(mapping_file, 'r') as mapping_fh:
-    for line in mapping_fh:
-        linecount += 1
-        (key, val) = line.split()
-        if key in mappings:
-            print "{}: error: {} has multiple entries in {} -- check line {}".format(progname,key,mapping_file,linecount)
-            raise SystemExit(1)
-        mappings[key] = val
+if not mapping_file:
+    print "Please specify a mapping file using the -m flag"
+    raise SystemExit(critical)
+elif not os.path.isfile(mapping_file):
+    print "{}: not a file".format(mapping_file)
+    raise SystemExit(critical)
+else:
+    with open(mapping_file, 'r') as mapping_fh:
+        for line in mapping_fh:
+            linecount += 1
+            (key, val) = line.split()
+            if key in mappings:
+                print "{} has multiple entries in {} -- check line {}".format(key,mapping_file,linecount)
+                raise SystemExit(critical)
+            mappings[key] = val
 
 for exclusion in exclusions:
     if exclusion in mappings:
-        print """{}: error: {} should be either excluded from consideration
-or mapped to an alternative name, not both.
-Check the files {} and {}.""".format(progname, exclusion, exclusion_file, mapping_file)
-        raise SystemExit(1)
+        print "{} should be in either {} or {}, not both".format(exclusion, exclusion_file, mapping_file)
+        raise SystemExit(critical)
 
-if os.path.samefile(automoddir,suppmoddir):
-    print """{}: error: the environment variables 'NESIDOC_AUTOMOD_DIR' and
-'NESIDOC_SUPPMOD_DIR' must point to different directories""".format(progname)
-    raise SystemExit(1)
+if not automoddir:
+    print """Please specify a directory containing automatically generated module lists using the -a flag"""
+    raise SystemExit(critical)
+elif not suppmoddir:
+    print """Please specify a directory containing supplementary module lists using the -s flag"""
+    raise SystemExit(critical)
+elif not versiontabledir:
+    print "Please specify a directory to hold version tables using the -v flag"
+    raise SystemExit(critical)
+elif not infodir:
+    print "Please specify a directory to hold version tables using the -i flag"
+    raise SystemExit(critical)
 
 # Create temporary directories and a lockfile if needed.
 if os.path.lexists(tmpdir) and not os.path.isdir(tmpdir):
-    print """{0}: error: {1} exists but is not a directory.
-Please remove {1} or ask an administrator to do so.""".format(progname,tmpdir)
-    raise SystemExit(1)
+    print """{} exists but is not a directory. Please remove {} or ask an administrator to do so.""".format(tmpdir)
+    raise SystemExit(critical)
+
+for d in (versiontabledir, suppmoddir, automoddir, infodir):
+    if not os.path.isdir(d):
+        print "{}: not a directory".format(d)
+        raise SystemExit(critical)
+
+if not os.path.isdir(os.path.join(infodir, ".git")):
+    print "{}: not a Git repository".format(infodir)
+    raise SystemExit(critical)
+
+if os.path.samefile(automoddir,suppmoddir):
+    print "The values given to the -a and -s flags must point to different directories"
+    raise SystemExit(critical)
 
 try:
     os.makedirs(versiondir)
+except OSError:
+    pass
+try:
     os.makedirs(blurbdir)
 except OSError:
     pass
 
 if os.path.lexists(lockfile):
-    print """{0}: error: {1} exists.
-Check to make sure that no other instance of {0} is running.
-If necessary, remove {1} or ask an administrator to do so.""".format(progname,lockfile)
-    raise SystemExit(1)
+    print "Lock file {} already exists".format(lockfile)
+    raise SystemExit(critical)
 open(lockfile, 'w').close()
 
 supplementary = False
@@ -86,7 +178,7 @@ for mldir in automoddir, suppmoddir:
             continue
         mlfullpath = os.path.join(mldir, mlfilename)
         if not os.path.isfile(mlfullpath):
-            print "{}: {}: not a file".format(progname,mlfullpath)
+            warnings.append("{}: not a file".format(mlfullpath))
             continue
         (machine, mlfileext) = os.path.splitext(mlfilename)
         linecount = 0
@@ -116,7 +208,7 @@ for mldir in automoddir, suppmoddir:
                     packagename = module
 
                 if not packagename:
-                    print "{}: warning: no package name found on line {} of file {}".format(progname, linecount, mlfullpath)
+                    warnings.append("No package name found on line {} of file {}".format(linecount, mlfullpath))
                     continue
                 elif packagename in exclusions:
                     continue
@@ -124,9 +216,9 @@ for mldir in automoddir, suppmoddir:
                     packagename = mappings[packagename]
 
                 if not version:
-                    version = "NO_VERSION"
+                    version = "No version information available"
                 if not blurb:
-                    blurb = "NO BLURB"
+                    blurb = "No blurb available"
 
                 tempautoverfile = os.path.join(versiondir, "{}.auto".format(packagename))
                 tempsuppverfile = os.path.join(versiondir, "{}.supp".format(packagename))
@@ -177,10 +269,9 @@ for mldir in automoddir, suppmoddir:
 
 # Cobble together an HTML version table from the automatically-generated and
 # supplementary version tables.
-# Recall that the temporary files have two extensions.
 for tempversionpart in os.listdir(versiondir):
     if not re.match(r"^.*\.(supp|auto)$", tempversionpart):
-        print "{}: warning: unexpected temporary file (foo): {}".format(progname, tempversionpart)
+        warnings.append("Unexpected temporary file: {}".format(tempversionpart))
         continue
     tempversionpath = os.path.join(versiondir, tempversionpart)
     (packagename, ext) = os.path.splitext(tempversionpart)
@@ -194,45 +285,108 @@ for tempversionpart in os.listdir(versiondir):
     
     os.remove(tempversionpath)
 
+version_notify = False
 for tempversionwhole in os.listdir(versiondir):
     if not fnmatch.fnmatch(tempversionwhole, "*.html"):
-        print "{}: warning: unexpected temporary file (bar): {}".format(progname, tempversionwhole)
+        warnings.append("Unexpected temporary file: {}".format(tempversionwhole))
         continue
     tempversionpath = os.path.join(versiondir, tempversionwhole)
     (packagename, ext) = os.path.splitext(tempversionwhole)
 
     permversionfile = os.path.join(versiontabledir, "{}.html".format(packagename))
     if not os.path.isfile(permversionfile):
-        print "Creating a new table of available versions for package {}".format(packagename)
+        info.append("Creating a new table of available versions for package {}".format(packagename))
         os.rename(tempversionpath, permversionfile)
     # Compare the old (permanent) and new ("temporary") files
     elif not filecmp.cmp(tempversionpath, permversionfile, shallow=False):
-        print "Available versions of {} have changed. The documentation will be updated.".format(packagename)
+        info.append("Available versions of {} have changed. The documentation will be updated.".format(packagename))
         os.rename(tempversionpath, permversionfile)
+        version_notify = True
     else:
         os.remove(tempversionpath)
 
-for tempblurbfile in os.listdir(blurbdir):
-    if not fnmatch.fnmatch(tempblurbfile, "*.md"):
-        print "{}: warning: unexpected temporary file: {}".format(progname, tempblurbfile)
+curdir = os.getcwd()
+os.chdir(infodir)
+for blurbfile in os.listdir(blurbdir):
+    if not fnmatch.fnmatch(blurbfile, "*.md"):
+        warnings.append("Unexpected temporary file: {}".format(blurbfile))
         continue
-    tempblurbpath = os.path.join(blurbdir, tempblurbfile)
-    (packagename, ext) = os.path.splitext(tempblurbfile)
-    permblurbfile = os.path.join(infodir, tempblurbfile)
-
-    if not os.path.isfile(permblurbfile):
-        print "Creating a new information file stub for {}".format(packagename)
+    tempblurbpath = os.path.join(blurbdir, blurbfile)
+    (packagename, ext) = os.path.splitext(blurbfile)
+    permblurbpath = os.path.join(infodir, blurbfile)
+    
+    # Switch to a new Git branch for this package. Create if necessary.
+    try:
+        subprocess.check_call(["git", "checkout", "-b", packagename])
+    except CalledProcessError:
+        subprocess.check_call(["git", "checkout", packagename])
+    if not os.path.isfile(permblurbpath):
+        info.append("Creating a new information file stub for {}".format(packagename))
         with open(tempblurbpath, 'r') as tbfh:
             tempblurb = tbfh.read()
-        with open(permblurbfile, 'a') as pbfh:
+        with open(permblurbpath, 'a') as pbfh:
             with open(template, 'r') as mdtemplate:
                 for line in mdtemplate:
                     if re.match(r"^<!--This is a placeholder for a description. Do not edit.-->$", line):
                         line = tempblurb
                     pbfh.write(line)
+        subprocess.check_call(["git", "add", blurbfile])
+        subprocess.check_call(["git", "commit", "-m", "New documentation stub for package {}".format(packagename), blurbfile])
+        subprocess.check_call(["git", "push", "origin", packagename])
 
     os.remove(tempblurbpath)
+os.chdir(curdir)
+
+if version_notify:
+    try:
+        print "Foo"
+        sender = "{}@{}".format(getpass.getuser(),socket.gethostname())
+        recipients = ["support@nesi.org.nz"]
+        message = """From: NeSI Documentation Server {}
+To: NeSI Support <{}>
+Subject: Request to regenerate documentation
+
+The automatic process to generate version tables and documentation stubs has detected new scientific software versions. The version tables have been updated accordingly. Please consider uploading the changed version tables to the public-facing pages on NeSI Support.""".format(sender, recipients[0])
+        smtpObj = smtplib.SMTP('localhost')
+        smtpObj.sendmail(sender, recipients, message)
+    except smtplib.SMTPException:
+        warnings.append("Could not send an email to Zendesk requesting a version table refresh.")
 
 os.rmdir(versiondir)
 os.rmdir(blurbdir)
 os.remove(lockfile)
+
+outputFooter = "To see the full report, run {} at the command line on {}.".format(os.path.join(packagedir,progname),socket.gethostname())
+actualmaxlength = maxlength - len(outputFooter) - 31
+
+exitStatus = ok
+outputText = []
+if len(warnings) > 0:
+    outputText.append("{} warnings were raised while generating documentation stubs and version tables".format(len(warnings)))
+    exitStatus = warning
+    outputText.append("")
+    outputText.extend(warnings)
+else:
+    outputText.append("Documentation stubs and version tables were successfully generated")
+if len(info) > 0:
+    outputText.append("")
+    outputText.extend(info)
+
+linecount = 0
+totalprinted = 0
+for outputLine in outputText:
+    # Set the total number of lines that would be printed
+    # if this line were printed.
+    linecount += 1
+    # Set the total number of characters that would be printed
+    # if this line were printed.
+    totalprinted += (len(outputLine) + 1)
+    if totalprinted < actualmaxlength or not truncate:
+        print outputLine
+    else:
+        print "({} more lines in output)".format(len(outputText)-(linecount-1))
+        print ""
+        print outputFooter
+        break
+
+raise SystemExit(exitStatus)

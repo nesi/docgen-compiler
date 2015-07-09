@@ -1,0 +1,55 @@
+#!/bin/bash
+
+# This script updates the lists of supplementary modules, along with the
+# mappings and exclusions files.
+
+progname=$(basename $0)
+
+# Execute getopt
+ARGS=$(getopt -o d: -l "module-list-dir:" -n "${progname}" -- "$@");
+
+#Bad arguments
+if [ $? -ne 0 ]
+then
+	exit 2
+fi
+
+eval set -- "$ARGS";
+
+while true
+do
+	case "$1" in
+	-d|--module-list-dir)
+		shift
+		if [ -n "$1" ]
+		then
+			dir=$1
+			shift
+		fi
+		;;
+	--)
+		shift
+		break
+		;;
+	esac
+done
+
+# Ensure that some environment variables are set
+if [ -z "${dir}" ]
+then
+	echo "Please specify a module list directory using the -d flag" 1>&2
+	exit 2
+elif [ ! -d "${dir}" ]
+then
+	echo "${dir}: not a directory" 1>&2
+	exit 2
+elif [ ! -d "${dir}/.git" ]
+then
+	echo "${dir}: not a Git repository" 1>&2
+	exit 2
+fi
+
+oldpwd=$(pwd -P)
+cd ${dir}
+git pull
+cd ${oldpwd}

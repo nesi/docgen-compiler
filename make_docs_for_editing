@@ -55,13 +55,14 @@ versiontabledir = None
 exclusion_file = None
 mapping_file = None
 truncate = False
+cron = False
 tmpdir = os.path.join(os.sep, "tmp", progname)
 lockfile = os.path.join(tmpdir, "lockfile")
 versiondir = os.path.join(tmpdir, "versions")
 blurbdir = os.path.join(tmpdir, "blurbs")
 
 try:
-    opts, args = getopt.getopt(sys.argv[1:], "a:hi:m:s:tv:x:", ["automatic-modules-dir=", "help", "package-info-dir=", "mapping-file=", "supplementary-modules-dir=", "truncate", "version-table-dir=", "exclusion-file="])
+    opts, args = getopt.getopt(sys.argv[1:], "a:chi:m:s:tv:x:", ["automatic-modules-dir=", "cron", "help", "package-info-dir=", "mapping-file=", "supplementary-modules-dir=", "truncate", "version-table-dir=", "exclusion-file="])
 except getopt.GetoptError as err:
     print str(err)
     usage()
@@ -70,6 +71,8 @@ except getopt.GetoptError as err:
 for (opt, arg) in opts:
     if opt in ("-a", "--automatic-modules-dir"):
         automoddir = arg
+    elif opt in ("-c", "--cron"):
+        cron = True
     elif opt in ("-h", "--help"):
         usage()
         raise SystemExit(ok)
@@ -88,40 +91,6 @@ for (opt, arg) in opts:
     else:
         assert False, "Unhandled option: {}".format(opt)
 
-exclusions = []
-if not exclusion_file:
-    print "Please specify an exclusion file using the -x flag"
-    raise SystemExit(critical)
-elif not os.path.isfile(exclusion_file):
-    print "{}: not a file".format(exclusion_file)
-    raise SystemExit(critical)
-else:
-    with open(exclusion_file, 'r') as exclusion_fh:
-        exclusions = exclusion_fh.read().splitlines()
-
-mappings = {}
-linecount = 0
-if not mapping_file:
-    print "Please specify a mapping file using the -m flag"
-    raise SystemExit(critical)
-elif not os.path.isfile(mapping_file):
-    print "{}: not a file".format(mapping_file)
-    raise SystemExit(critical)
-else:
-    with open(mapping_file, 'r') as mapping_fh:
-        for line in mapping_fh:
-            linecount += 1
-            (key, val) = line.split()
-            if key in mappings:
-                print "{} has multiple entries in {} -- check line {}".format(key,mapping_file,linecount)
-                raise SystemExit(critical)
-            mappings[key] = val
-
-for exclusion in exclusions:
-    if exclusion in mappings:
-        print "{} should be in either {} or {}, not both".format(exclusion, exclusion_file, mapping_file)
-        raise SystemExit(critical)
-
 if not automoddir:
     print """Please specify a directory containing automatically generated module lists using the -a flag"""
     raise SystemExit(critical)
@@ -132,7 +101,7 @@ elif not versiontabledir:
     print "Please specify a directory to hold version tables using the -v flag"
     raise SystemExit(critical)
 elif not infodir:
-    print "Please specify a directory to hold version tables using the -i flag"
+    print "Please specify a directory to hold package information using the -i flag"
     raise SystemExit(critical)
 
 # Create temporary directories and a lockfile if needed.
@@ -152,6 +121,42 @@ if not os.path.isdir(os.path.join(infodir, ".git")):
 if os.path.samefile(automoddir,suppmoddir):
     print "The values given to the -a and -s flags must point to different directories"
     raise SystemExit(critical)
+
+if not exclusion_file:
+    exclusion_file = os.path.join(suppmoddir, "exclusions.txt")
+    info.append("Using default exclusion file location: {}".format(exclusion_file))
+
+exclusions = []
+if not os.path.isfile(exclusion_file):
+    print "{}: not a file".format(exclusion_file)
+    raise SystemExit(critical)
+else:
+    with open(exclusion_file, 'r') as exclusion_fh:
+        exclusions = exclusion_fh.read().splitlines()
+
+if not mapping_file:
+    mapping_file = os.path.join(suppmoddir, "mappings.txt")
+    info.append("Using default mapping file location: {}".format(mapping_file))
+
+mappings = {}
+linecount = 0
+if not os.path.isfile(mapping_file):
+    print "{}: not a file".format(mapping_file)
+    raise SystemExit(critical)
+else:
+    with open(mapping_file, 'r') as mapping_fh:
+        for line in mapping_fh:
+            linecount += 1
+            (key, val) = line.split()
+            if key in mappings:
+                print "{} has multiple entries in {} -- check line {}".format(key,mapping_file,linecount)
+                raise SystemExit(critical)
+            mappings[key] = val
+
+for exclusion in exclusions:
+    if exclusion in mappings:
+        print "{} should be in either {} or {}, not both".format(exclusion, exclusion_file, mapping_file)
+        raise SystemExit(critical)
 
 try:
     os.makedirs(versiondir)
@@ -179,6 +184,10 @@ for mldir in automoddir, suppmoddir:
         mlfullpath = os.path.join(mldir, mlfilename)
         if not os.path.isfile(mlfullpath):
             warnings.append("{}: not a file".format(mlfullpath))
+            continue
+        if mlfullpath == mapping_file or mlfullpath == exclusion_file:
+            # Skip the mapping and exclusion files
+            # (this allows them to be put in with the supplementary files)
             continue
         (machine, mlfileext) = os.path.splitext(mlfilename)
         linecount = 0
@@ -307,6 +316,7 @@ for tempversionwhole in os.listdir(versiondir):
 
 curdir = os.getcwd()
 os.chdir(infodir)
+devnull_fh = open(os.devnull, 'w')
 for blurbfile in os.listdir(blurbdir):
     if not fnmatch.fnmatch(blurbfile, "*.md"):
         warnings.append("Unexpected temporary file: {}".format(blurbfile))
@@ -314,28 +324,39 @@ for blurbfile in os.listdir(blurbdir):
     tempblurbpath = os.path.join(blurbdir, blurbfile)
     (packagename, ext) = os.path.splitext(blurbfile)
     permblurbpath = os.path.join(infodir, blurbfile)
-    
-    # Switch to a new Git branch for this package. Create if necessary.
-    try:
-        subprocess.check_call(["git", "checkout", "-b", packagename])
-    except CalledProcessError:
-        subprocess.check_call(["git", "checkout", packagename])
+   
+    # Start by ensuring that we're working on the master branch, to get
+    # the published versions of things. Do we have a published page for
+    # this package?
+    subprocess.check_call(["git", "checkout", "master"], stdout=devnull_fh, stderr=subprocess.STDOUT)
     if not os.path.isfile(permblurbpath):
-        info.append("Creating a new information file stub for {}".format(packagename))
-        with open(tempblurbpath, 'r') as tbfh:
-            tempblurb = tbfh.read()
-        with open(permblurbpath, 'a') as pbfh:
-            with open(template, 'r') as mdtemplate:
-                for line in mdtemplate:
-                    if re.match(r"^<!--This is a placeholder for a description. Do not edit.-->$", line):
-                        line = tempblurb
-                    pbfh.write(line)
-        subprocess.check_call(["git", "add", blurbfile])
-        subprocess.check_call(["git", "commit", "-m", "New documentation stub for package {}".format(packagename), blurbfile])
-        subprocess.check_call(["git", "push", "origin", packagename])
+        # If we get here, no.
+        # Switch to a new Git branch for this package. Create if necessary.
+        subprocess.check_call(["git", "fetch"], stdout=devnull_fh, stderr=subprocess.STDOUT)
+        try:
+            subprocess.check_call(["git", "checkout", "-b", packagename], stdout=devnull_fh, stderr=subprocess.STDOUT)
+        except subprocess.CalledProcessError:
+            subprocess.check_call(["git", "checkout", packagename], stdout=devnull_fh, stderr=subprocess.STDOUT)
+        if not os.path.isfile(permblurbpath):
+            info.append("Creating a new information file stub for {}".format(packagename))
+            with open(tempblurbpath, 'r') as tbfh:
+                tempblurb = tbfh.read()
+            with open(permblurbpath, 'a') as pbfh:
+                with open(template, 'r') as mdtemplate:
+                    for line in mdtemplate:
+                        if re.match(r"^<!--This is a placeholder for a description. Do not edit.-->$", line):
+                            line = tempblurb
+                        pbfh.write(line)
+            subprocess.check_call(["git", "add", blurbfile], stdout=devnull_fh, stderr=subprocess.STDOUT)
+            subprocess.check_call(["git", "commit", "-m", "New documentation stub for package {}".format(packagename), blurbfile], stdout=devnull_fh, stderr=subprocess.STDOUT)
+            subprocess.check_call(["git", "push", "origin", packagename], stdout=devnull_fh, stderr=subprocess.STDOUT)
+        
+        # Finally, switch back to master.
+        subprocess.check_call(["git", "checkout", "master"], stdout=devnull_fh, stderr=subprocess.STDOUT)
 
     os.remove(tempblurbpath)
 os.chdir(curdir)
+devnull_fh.close()
 
 if version_notify:
     try:
@@ -381,12 +402,13 @@ for outputLine in outputText:
     # Set the total number of characters that would be printed
     # if this line were printed.
     totalprinted += (len(outputLine) + 1)
-    if totalprinted < actualmaxlength or not truncate:
-        print outputLine
-    else:
-        print "({} more lines in output)".format(len(outputText)-(linecount-1))
-        print ""
-        print outputFooter
-        break
+    if not cron or (cron and exitStatus > 0):
+        if totalprinted < actualmaxlength or not truncate:
+            print outputLine
+        else:
+            print "({} more lines in output)".format(len(outputText)-(linecount-1))
+            print ""
+            print outputFooter
+            break
 
 raise SystemExit(exitStatus)

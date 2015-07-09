@@ -1,0 +1,130 @@
+#!/bin/bash
+
+# This script gathers information from the following sources:
+#  - HTML tables containing the versions of each package that NeSI makes
+#    available, and on which machine(s) each version may be found
+#  - Markdown files containing a documentation stub
+#
+# This script assembles the HTML table and Markdown file for each pa
+
+progname=$(basename $0)
+tmpdir="/tmp/${progname}"
+
+# Execute getopt
+ARGS=$(getopt -o i:v:z: -l "package-info-dir:,version-table-dir:,zendesk-api-dir:" -n "${progname}" -- "$@");
+
+#Bad arguments
+if [ $? -ne 0 ];
+then
+	exit 2
+fi
+
+eval set -- "$ARGS";
+
+while true
+do
+	case "$1" in
+	-i|--package-info-dir)
+		shift
+		if [ -n "$1" ]
+		then
+			infodir=$1
+			shift
+		fi
+		;;
+	-v|--version-table-dir)
+		shift
+		if [ -n "$1" ]
+		then
+			versiontabledir=$1
+			shift
+		fi
+		;;
+	-z|--zendesk-api-dir)
+		shift
+		if [ -n "$1" ]
+		then
+			zendeskapidir=$1
+			shift
+		fi
+		;;
+	--)
+		shift
+		break
+		;;
+	esac
+done
+
+# Ensure that some environment variables are set
+if [ -z "${infodir}" ]
+then
+	echo "Please specify a package information directory using the -i flag"
+	exit 2
+elif [ ! -d "${infodir}" ]
+then
+	echo "${infodir}: not a directory"
+	exit 2
+fi
+
+if [ -z "${versiontabledir}" ]
+then
+	echo "Please specify a version table directory using the -v flag"
+	exit 2
+elif [ ! -d "${versiontabledir}" ]
+then
+	echo "${versiontabledir}: not a directory"
+	exit 2
+fi
+
+if [ -z "${zendeskapidir}" ]
+then
+	echo "Please specify a Zendesk API directory using the -z flag"
+	exit 2
+elif [ ! -d "${zendeskapidir}" ]
+then
+	echo "${zendeskapidir}: not a directory"
+	exit 2
+fi
+
+# Test for the existence of a lockfile.
+# Create one if it is absent.
+mkdir -p ${tmpdir}
+lockfile=${tmpdir}/lockfile
+if [ -e "${lockfile}" ]
+then
+	echo "error: ${lockfile} exists."
+	echo "Check to make sure that no other instance of $progname is running."
+	echo "If necessary, remove ${lockfile} or ask an administrator to do so."
+	exit 1
+else
+	touch ${lockfile}
+fi
+
+for file in ${infodir}/*
+do
+	# Get a machine name (the file name minus the extension)
+	basefile=$(basename $file)
+	packagename=${basefile%.*}
+	versionfile=${versiontabledir}/${packagename}.html
+	to_upload=${tmpdir}/${basefile}
+
+	if [ ! -f ${versionfile} ]
+	then
+		echo "error: no version table found for $packagename"
+		continue
+	else
+		echo "Finalising documentation for $packagename"
+		awk -v f="${versionfile}" 'BEGIN {while (getline < f) txt=txt $0 "\n"} /<!--This is a placeholder for an automatically generated table. Do not edit.-->/ {sub("<!--This is a placeholder for an automatically generated table. Do not edit.-->", txt)} 1' ${file} > ${to_upload}
+	fi
+done
+
+echo "Uploading software documentation to Zendesk ..."
+${zendeskapidir}/upload_articles ${tmpdir}/*.md
+upload_status=$?
+if [ ${upload_status} -eq 0 ]
+then
+	echo "Upload complete."
+else
+	echo "$progname: error: upload failed"
+fi
+rm -r ${tmpdir}

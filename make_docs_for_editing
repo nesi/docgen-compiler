@@ -360,7 +360,6 @@ devnull_fh.close()
 
 if version_notify:
     try:
-        print "Foo"
         sender = "{}@{}".format(getpass.getuser(),socket.gethostname())
         recipients = ["support@nesi.org.nz"]
         message = """From: NeSI Documentation Server {}

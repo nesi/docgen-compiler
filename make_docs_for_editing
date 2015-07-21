@@ -244,7 +244,7 @@ for mldir in automoddir, suppmoddir:
     <th>NeSI Cluster</th>
   </tr>
 """)
-                            tsvfh.write("""  <tr>
+                        tsvfh.write("""  <tr>
     <td>{}</td>
     <td>{}</td>
   </tr>
@@ -265,7 +265,7 @@ for mldir in automoddir, suppmoddir:
     <th>NeSI Cluster</th>
   </tr>
 """)
-                            tavfh.write("""  <tr>
+                        tavfh.write("""  <tr>
     <td>{}</td>
     <td>{}</td>
   </tr>

@@ -236,7 +236,7 @@ for mldir in automoddir, suppmoddir:
                 if supplementary:
                     with open(tempsuppverfile, "a") as tsvfh:
                         if os.path.getsize(tempsuppverfile) == 0:
-                            tsvfh.write("""## Additional Supported Packages
+                            tsvfh.write("""## Additional supported packages
 
 <table>
   <tr>
@@ -257,7 +257,7 @@ for mldir in automoddir, suppmoddir:
                 else:
                     with open(tempautoverfile, "a") as tavfh:
                         if os.path.getsize(tempautoverfile) == 0:
-                            tavfh.write("""## Packages With Modules
+                            tavfh.write("""## Packages with modules
 
 <table>
   <tr>

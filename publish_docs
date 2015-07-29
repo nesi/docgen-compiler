@@ -9,6 +9,7 @@
 
 progname=$(basename $0)
 tmpdir="/tmp/${progname}"
+olddir=$(pwd)
 
 # Execute getopt
 ARGS=$(getopt -o i:v:z: -l "package-info-dir:,version-table-dir:,zendesk-api-dir:" -n "${progname}" -- "$@");
@@ -56,6 +57,7 @@ do
 done
 
 # Ensure that some environment variables are set
+gitrepo=false
 if [ -z "${infodir}" ]
 then
 	echo "Please specify a package information directory using the -i flag"
@@ -64,6 +66,10 @@ elif [ ! -d "${infodir}" ]
 then
 	echo "${infodir}: not a directory"
 	exit 2
+elif [ -d "${infodir}/.git" ]
+then
+	echo "Note: ${infodir} is a Git repository"
+	gitrepo=true
 fi
 
 if [ -z "${versiontabledir}" ]
@@ -100,6 +106,14 @@ else
 	touch ${lockfile}
 fi
 
+# Ensure that the most current version of the master branch is being used
+cd ${infodir}
+if [ "${gitrepo}" = true ]
+then
+	git checkout master
+	git pull
+fi
+
 for file in ${infodir}/*
 do
 	# Get a machine name (the file name minus the extension)
@@ -127,4 +141,8 @@ then
 else
 	echo "$progname: error: upload failed"
 fi
+
+# Change back to the original working directory and remove the temporary
+# directory
+cd $olddir
 rm -r ${tmpdir}

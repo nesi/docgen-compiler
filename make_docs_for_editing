@@ -44,6 +44,7 @@ unknown = 3
 warnings = []
 info = []
 maxlength = 1024
+tagname = 'new-article'
 
 progname = os.path.basename(__file__)
 packagedir = os.path.dirname(os.path.abspath(__file__))
@@ -334,7 +335,7 @@ for blurbfile in os.listdir(blurbdir):
         # Switch to a new Git branch for this package. Create if necessary.
         subprocess.check_call(["git", "fetch"], stdout=devnull_fh, stderr=subprocess.STDOUT)
         try:
-            subprocess.check_call(["git", "checkout", "-b", packagename], stdout=devnull_fh, stderr=subprocess.STDOUT)
+            subprocess.check_call(["git", "checkout", "-b", packagename, tagname], stdout=devnull_fh, stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError:
             subprocess.check_call(["git", "checkout", packagename], stdout=devnull_fh, stderr=subprocess.STDOUT)
         if not os.path.isfile(permblurbpath):

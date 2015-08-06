@@ -44,7 +44,7 @@ unknown = 3
 warnings = []
 info = []
 maxlength = 1024
-tagname = 'new-article'
+draftsbranch = 'drafts'
 
 progname = os.path.basename(__file__)
 packagedir = os.path.dirname(os.path.abspath(__file__))
@@ -330,14 +330,13 @@ for blurbfile in os.listdir(blurbdir):
     # the published versions of things. Do we have a published page for
     # this package?
     subprocess.check_call(["git", "checkout", "master"], stdout=devnull_fh, stderr=subprocess.STDOUT)
+    subprocess.check_call(["git", "pull"], stdout=devnull_fh, stderr=subprocess.STDOUT)
     if not os.path.isfile(permblurbpath):
         # If we get here, no.
         # Switch to a new Git branch for this package. Create if necessary.
         subprocess.check_call(["git", "fetch"], stdout=devnull_fh, stderr=subprocess.STDOUT)
-        try:
-            subprocess.check_call(["git", "checkout", "-b", packagename, tagname], stdout=devnull_fh, stderr=subprocess.STDOUT)
-        except subprocess.CalledProcessError:
-            subprocess.check_call(["git", "checkout", packagename], stdout=devnull_fh, stderr=subprocess.STDOUT)
+        subprocess.check_call(["git", "checkout", draftsbranch], stdout=devnull_fh, stderr=subprocess.STDOUT)
+        subprocess.check_call(["git", "merge", "master", "-m", "Automatic merge from master"], stdout=devnull_fh, stderr=subprocess.STDOUT)
         if not os.path.isfile(permblurbpath):
             info.append("Creating a new information file stub for {}".format(packagename))
             with open(tempblurbpath, 'r') as tbfh:
@@ -350,7 +349,7 @@ for blurbfile in os.listdir(blurbdir):
                         pbfh.write(line)
             subprocess.check_call(["git", "add", blurbfile], stdout=devnull_fh, stderr=subprocess.STDOUT)
             subprocess.check_call(["git", "commit", "-m", "New documentation stub for package {}".format(packagename), blurbfile], stdout=devnull_fh, stderr=subprocess.STDOUT)
-            subprocess.check_call(["git", "push", "origin", packagename], stdout=devnull_fh, stderr=subprocess.STDOUT)
+            subprocess.check_call(["git", "push", "origin", draftsbranch], stdout=devnull_fh, stderr=subprocess.STDOUT)
         
         # Finally, switch back to master.
         subprocess.check_call(["git", "checkout", "master"], stdout=devnull_fh, stderr=subprocess.STDOUT)

@@ -6,7 +6,7 @@ always comprising the first and second lines of the article respectively. -->
 # Description
 <!--This is a placeholder for a description. Do not edit.-->
 
-[Visit the home page](http://www.example.com)
+[Click here](http://www.example.com) to visit the home page.
 
 # Available modules
 <!--This is a placeholder for an automatically generated table. Do not edit.-->

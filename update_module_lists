@@ -51,5 +51,7 @@ fi
 
 oldpwd=$(pwd -P)
 cd ${dir}
-git pull
+# Only report if something went wrong, maybe
+# (-q signifies do fetch and merge quietly)
+git pull -q
 cd ${oldpwd}

@@ -28,15 +28,61 @@ support desk](mailto:support@nesi.org.nz).
 
 	#!/bin/bash
 	
-	#SBATCH -A uoa99999
-	#SBATCH 
+	#SBATCH     --job-name=MyFooJob
+	#SBATCH      --account=nesi99999
+	#SBATCH         --time=01:00:00
+	#SBATCH --cpus-per-task=1
+	#SBATCH   --mem-per-cpu=4096
+	#SBATCH       --workdir=/projects/nesi99999/MyFooJob
+	#SBATCH        --output=MyFooJob.out
+	#SBATCH         --error=MyFooJob.err
+	#SBATCH     --mail-type=ALL
+	#SBATCH     --mail-user=j.bloggs@example.com
+	#SBATCH     --mail-user=jblo123@example.ac.nz
 	
-	module load Foo/1.0.1-intel-2015.02
-	srun bar
+	module load Foo/1.2.3
+	
+	foo -bar MyInput.dat
 
 ## Example script for the Fitzroy cluster
 
-## Example script for the BlueGene/P cluster
+	#!/bin/bash
+	
+	#@ job_name = MyFooJob
+	#@ account_no = nesi99999
+	#@ class = General
+	#@ wall_clock_limit = 01:00:00
+	#@ job_type = serial
+	#@ initialdir = /hpcf/working/nesi99999/MyFooJob
+	#@ output = $(job_name).out
+	#@ error = $(job_name).err
+	#@ notification = always
+	#@ notify_user = j.bloggs@example.com
+	#@ queue
+	
+	module load Foo/1.2.3
+	
+	foo -bar MyInput.dat
+
+## Example script for the UC HPC Power7 cluster
+
+	#!/bin/bash
+	
+	#@ job_name = MyFooJob
+	#@ account_no = nesi99999
+	#@ group = UC
+	#@ class = p7linux
+	#@ wall_clock_limit = 01:00:00
+	#@ initialdir = /hpc/scratch/nesi99999/MyFooJob
+	#@ output = $(job_name).out
+	#@ error = $(job_name).err
+	#@ notification = always
+	#@ notify_user = j.bloggs@example.com
+	#@ queue
+	
+	module load Foo/1.2.3
+	
+	foo -bar MyInput.dat
 
 # Further notes
 

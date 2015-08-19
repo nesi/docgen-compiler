@@ -133,7 +133,7 @@ do
 done
 
 echo "Uploading software documentation to Zendesk ..."
-${zendeskapidir}/upload_articles ${tmpdir}/*.md
+${zendeskapidir}/upload_article ${tmpdir}/*.md
 upload_status=$?
 if [ ${upload_status} -eq 0 ]
 then

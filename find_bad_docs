@@ -25,7 +25,7 @@ packagedir = os.path.dirname(os.path.abspath(__file__))
 articledir = None
 include_drafts = False
 include_outdated = False
-whitelist_file = None
+custom_whitelist_file = None
 zendeskapidir = None
 tmpdir = os.path.join(os.sep, "tmp", progname)
 lockfile = os.path.join(tmpdir, "lockfile")
@@ -48,19 +48,18 @@ for (opt, arg) in opts:
     elif opt in ("-o", "--include-outdated"):
         include_outdated = True
     elif opt in ("-w", "--whitelist"):
-        whitelist_file = arg
+        custom_whitelist_file = arg
     elif opt in ("-z", "--zendesk-api-dir"):
         zendeskapidir = arg
     else:
         assert False, "Unhandled option: {}".format(opt)
 
-if not articledir:
-    print "Please specify the directory containing Zendesk articles with the -a flag"
+if not zendeskapidir:
+    print "Please specify the directory containing the Zendesk API scripts with the -z flag"
     raise SystemExit(critical)
 
-if not zendeskapidir:
-    print """Please specify the directory containing the Zendesk API scripts with the -z
-flag"""
+if not articledir:
+    print "Please specify the directory containing Zendesk articles with the -a flag"
     raise SystemExit(critical)
 
 if os.path.lexists(tmpdir) and not os.path.isdir(tmpdir):
@@ -72,25 +71,41 @@ for d in articledir, zendeskapidir:
             print "{}: not a directory".format(d)
             raise SystemExit(critical)
 
-whitelist = []
-if not whitelist_file:
-    print "Note: No whitelist has been specified"
+if not os.path.isdir(os.path.join(articledir, ".git")):
+    print "{}: not a Git repository".format(articledir)
+    raise SystemExit(critical)
+
+if not custom_whitelist_file:
+    whitelist_file = os.path.join(articledir, "whitelist.txt") 
+    print "Note: No custom whitelist has been specified. Using {}".format(whitelist_file)
 elif not os.path.isfile(whitelist_file):
     print "{}: not a file".format(whitelist_file)
     raise SystemExit(critical)
 else:
-    with open(whitelist_file, 'r') as whitelist_fh:
-        whitelist = whitelist_fh.read().splitlines()
+    whitelist_file = custom_whitelist_file
 
 if os.path.lexists(lockfile):
     print "Lock file {} already exists".format(lockfile)
     raise SystemExit(critical)
 open(lockfile, 'w').close()
 
-exe_file = os.path.join(zendeskapidir, "list_articles")
-tmp_file = os.path.join(tmpdir, "list_articles.txt")
-subprocess.check_call(["python", exe_file, "-o", tmp_file])
+print "Accessing the documentation repository ..."
+initial_dir = os.getcwd()
+os.chdir(articledir)
+devnull_fh = open(os.devnull, 'w')
 
+branches = subprocess.check_output(["git", "branch"]).splitlines()
+for branch in branches:
+    unstarred = re.sub(r'^\* ', '', branch)
+    if branch == unstarred: continue
+    initial_branch = unstarred
+
+if initial_branch != "master":
+    print "Switching to the master branch ..."
+    subprocess.check_call(["git", "checkout", "master"], stdout=devnull_fh, stderr=subprocess.STDOUT)
+    subprocess.check_call(["git", "pull"], stdout=devnull_fh, stderr=subprocess.STDOUT)
+
+print "Building a list of articles in the repository ..."
 local_articles = []
 for local_article_file in os.listdir(articledir):
     local_article_fullpath = os.path.join(articledir, local_article_file)
@@ -112,6 +127,15 @@ for local_article_file in os.listdir(articledir):
         local_article['title'] = re.sub(r'^Title:\s+', '', title_line)
         local_articles.append(local_article)
 
+print "Building a whitelist of articles not under version control ..."
+whitelist = []
+with open(whitelist_file, 'r') as whitelist_fh:
+    whitelist = whitelist_fh.read().splitlines()
+
+if initial_branch != "master":
+    print "Switching back to the {} branch ...".format(initial_branch)
+    subprocess.check_call(["git", "checkout", initial_branch], stdout=devnull_fh, stderr=subprocess.STDOUT)
+
 # We shouldn't need to build a data structure here
 # (we should be able to just iterate over the data)
 #
@@ -122,6 +146,18 @@ for local_article_file in os.listdir(articledir):
 # 3 = Title
 # 4 = Draft
 # 5 = Outdated
+exe_file = os.path.join(zendeskapidir, "list_articles")
+tmp_file = os.path.join(tmpdir, "list_articles.txt")
+
+zd_list_obtained = False
+while not zd_list_obtained:
+    try:
+        subprocess.check_call(["python", exe_file, "-o", tmp_file])
+        zd_list_obtained = True
+    except subprocess.CalledProcessError:
+        pass
+    
+
 with open(tmp_file, 'r') as list_fh:
     zd_articles = list_fh.read().splitlines()
     for zd_article_str in zd_articles:
@@ -151,5 +187,6 @@ with open(tmp_file, 'r') as list_fh:
             if not exists:
                 print "Bad article in Zendesk: {1}/{2}/{3} (ID: {0})".format(*zd_article)
 
+os.chdir(initial_dir)
 os.remove(tmp_file)
 os.remove(lockfile)

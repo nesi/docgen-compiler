@@ -1,7 +1,8 @@
 Category: Available Software
 Section: Stubs
-<!-- The above lines, specifying the category and section, must be present and
-always comprising the first and second lines of the article respectively. -->
+Title: Foo
+<!-- The above lines, specifying the category, section and title, must be
+present and always comprising the first three lines of the article. -->
 
 # Description
 <!--This is a placeholder for a description. Do not edit.-->

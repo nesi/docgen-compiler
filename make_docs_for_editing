@@ -344,8 +344,8 @@ for blurbfile in os.listdir(blurbdir):
             with open(permblurbpath, 'a') as pbfh:
                 with open(template, 'r') as mdtemplate:
                     for line in mdtemplate:
-                        if re.match(r"^<!--This is a placeholder for a description. Do not edit.-->$", line):
-                            line = tempblurb
+                        line = re.sub(r'^Title:\s+(.*)\n$', "Title: {}".format(packagename), line)
+                        line = re.sub(r"^<!--This is a placeholder for a description. Do not edit.-->$", tempblurb, line):
                         pbfh.write(line)
             subprocess.check_call(["git", "add", blurbfile], stdout=devnull_fh, stderr=subprocess.STDOUT)
             subprocess.check_call(["git", "commit", "-m", "New documentation stub for package {}".format(packagename), blurbfile], stdout=devnull_fh, stderr=subprocess.STDOUT)

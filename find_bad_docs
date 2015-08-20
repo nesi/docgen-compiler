@@ -102,12 +102,14 @@ for local_article_file in os.listdir(articledir):
         local_article = {}
         category_line = None
         section_line = None
+        title_line = None
         with open(local_article_fullpath, 'r') as local_article_fh:
             category_line = local_article_fh.readline().rstrip()
             section_line = local_article_fh.readline().rstrip()
+            title_line = local_article_fh.readline().rstrip()
         local_article['category'] = re.sub(r'^Category:\s+', '', category_line)
         local_article['section'] = re.sub(r'^Section:\s+', '', section_line)
-        local_article['title'] = re.sub(r'\.md$', '', local_article_file)
+        local_article['title'] = re.sub(r'^Title:\s+', '', title_line)
         local_articles.append(local_article)
 
 # We shouldn't need to build a data structure here

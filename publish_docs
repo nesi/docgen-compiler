@@ -116,13 +116,17 @@ fi
 
 for file in ${infodir}/*
 do
-	# Get a machine name (the file name minus the extension)
+	# Get a package name (the file name minus the extension)
 	basefile=$(basename $file)
 	packagename=${basefile%.*}
+	extension=${basefile##*.}
 	versionfile=${versiontabledir}/${packagename}.html
 	to_upload=${tmpdir}/${basefile}
 
-	if [ ! -f ${versionfile} ]
+	if [ "${extension}" != "md" ]
+	then
+		continue
+	elif [ ! -f ${versionfile} ]
 	then
 		echo "error: no version table found for $packagename"
 		continue

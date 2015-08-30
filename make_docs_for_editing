@@ -179,7 +179,7 @@ for mldir in automoddir, suppmoddir:
         supplementary = True
     else:
         supplementary = False
-    for mlfilename in os.listdir(mldir):
+    for mlfilename in sorted(os.listdir(mldir)):
         if fnmatch.fnmatch(mlfilename, ".*"):
             continue
         mlfullpath = os.path.join(mldir, mlfilename)
@@ -279,7 +279,7 @@ for mldir in automoddir, suppmoddir:
 
 # Cobble together an HTML version table from the automatically-generated and
 # supplementary version tables.
-for tempversionpart in os.listdir(versiondir):
+for tempversionpart in sorted(os.listdir(versiondir)):
     if not re.match(r"^.*\.(supp|auto)$", tempversionpart):
         warnings.append("Unexpected temporary file: {}".format(tempversionpart))
         continue
@@ -295,8 +295,8 @@ for tempversionpart in os.listdir(versiondir):
     
     os.remove(tempversionpath)
 
-version_notify = False
-for tempversionwhole in os.listdir(versiondir):
+version_notify = {}
+for tempversionwhole in sorted(os.listdir(versiondir)):
     if not fnmatch.fnmatch(tempversionwhole, "*.html"):
         warnings.append("Unexpected temporary file: {}".format(tempversionwhole))
         continue
@@ -311,54 +311,67 @@ for tempversionwhole in os.listdir(versiondir):
     elif not filecmp.cmp(tempversionpath, permversionfile, shallow=False):
         info.append("Available versions of {} have changed. The documentation will be updated.".format(packagename))
         os.rename(tempversionpath, permversionfile)
-        version_notify = True
+        version_notify[packagename] = True
     else:
         os.remove(tempversionpath)
 
+newstubs = []
 curdir = os.getcwd()
 os.chdir(infodir)
 devnull_fh = open(os.devnull, 'w')
-for blurbfile in os.listdir(blurbdir):
+# Start by ensuring that we're working on the master branch, to get
+# the published versions of things.
+subprocess.check_call(["git", "checkout", "master"], stdout=devnull_fh, stderr=subprocess.STDOUT)
+subprocess.check_call(["git", "pull"], stdout=devnull_fh, stderr=subprocess.STDOUT)
+
+for blurbfile in sorted(os.listdir(blurbdir)):
     if not fnmatch.fnmatch(blurbfile, "*.md"):
         warnings.append("Unexpected temporary file: {}".format(blurbfile))
         continue
     tempblurbpath = os.path.join(blurbdir, blurbfile)
-    (packagename, ext) = os.path.splitext(blurbfile)
     permblurbpath = os.path.join(infodir, blurbfile)
+
+    #if not cron:
+    #    print "Making sure a documentation file exists for software package {} ...".format(packagename)
    
-    # Start by ensuring that we're working on the master branch, to get
-    # the published versions of things. Do we have a published page for
-    # this package?
-    subprocess.check_call(["git", "checkout", "master"], stdout=devnull_fh, stderr=subprocess.STDOUT)
-    subprocess.check_call(["git", "pull"], stdout=devnull_fh, stderr=subprocess.STDOUT)
+    # Do we have a published page for this package?
+    if os.path.isfile(permblurbpath):
+        os.remove(tempblurbpath)
+    else:
+        newstubs.append(blurbfile)
+
+subprocess.check_call(["git", "fetch"], stdout=devnull_fh, stderr=subprocess.STDOUT)
+subprocess.check_call(["git", "checkout", draftsbranch], stdout=devnull_fh, stderr=subprocess.STDOUT)
+subprocess.check_call(["git", "merge", "master", "-m", "Automatic merge from master"], stdout=devnull_fh, stderr=subprocess.STDOUT)
+
+for blurbfile in newstubs:
+    tempblurbpath = os.path.join(blurbdir, blurbfile)
+    permblurbpath = os.path.join(infodir, blurbfile)
+    (packagename, ext) = os.path.splitext(blurbfile)
+
+    version_notify[packagename] = False
     if not os.path.isfile(permblurbpath):
-        # If we get here, no.
-        # Switch to a new Git branch for this package. Create if necessary.
-        subprocess.check_call(["git", "fetch"], stdout=devnull_fh, stderr=subprocess.STDOUT)
-        subprocess.check_call(["git", "checkout", draftsbranch], stdout=devnull_fh, stderr=subprocess.STDOUT)
-        subprocess.check_call(["git", "merge", "master", "-m", "Automatic merge from master"], stdout=devnull_fh, stderr=subprocess.STDOUT)
-        if not os.path.isfile(permblurbpath):
-            info.append("Creating a new information file stub for {}".format(packagename))
-            with open(tempblurbpath, 'r') as tbfh:
-                tempblurb = tbfh.read()
-            with open(permblurbpath, 'a') as pbfh:
-                with open(template, 'r') as mdtemplate:
-                    for line in mdtemplate:
-                        line = re.sub(r'^Title:\s+(.*)\n$', "Title: {}".format(packagename), line)
-                        line = re.sub(r"^<!--This is a placeholder for a description. Do not edit.-->$", tempblurb, line)
-                        pbfh.write(line)
-            subprocess.check_call(["git", "add", blurbfile], stdout=devnull_fh, stderr=subprocess.STDOUT)
-            subprocess.check_call(["git", "commit", "-m", "New documentation stub for package {}".format(packagename), blurbfile], stdout=devnull_fh, stderr=subprocess.STDOUT)
-            subprocess.check_call(["git", "push", "origin", draftsbranch], stdout=devnull_fh, stderr=subprocess.STDOUT)
-        
-        # Finally, switch back to master.
-        subprocess.check_call(["git", "checkout", "master"], stdout=devnull_fh, stderr=subprocess.STDOUT)
+        info.append("Creating a new documentation stub for {}".format(packagename))
+        with open(tempblurbpath, 'r') as tbfh:
+            tempblurb = tbfh.read()
+        with open(permblurbpath, 'a') as pbfh:
+            with open(template, 'r') as mdtemplate:
+                for line in mdtemplate:
+                    line = re.sub(r'^Title:\s+(.*)\n$', "Title: {}".format(packagename), line)
+                    line = re.sub(r"^<!--This is a placeholder for a description. Do not edit.-->$", tempblurb, line)
+                    pbfh.write(line)
+        subprocess.check_call(["git", "add", blurbfile], stdout=devnull_fh, stderr=subprocess.STDOUT)
+        subprocess.check_call(["git", "commit", "-m", "New documentation stub for package {}".format(packagename), blurbfile], stdout=devnull_fh, stderr=subprocess.STDOUT)
 
     os.remove(tempblurbpath)
+
+# Finally, push to the remote and switch back to master.
+subprocess.check_call(["git", "push", "origin", draftsbranch], stdout=devnull_fh, stderr=subprocess.STDOUT)
+subprocess.check_call(["git", "checkout", "master"], stdout=devnull_fh, stderr=subprocess.STDOUT)
 os.chdir(curdir)
 devnull_fh.close()
 
-if version_notify:
+if any(version_notify.itervalues()):
     try:
         sender = "{}@{}".format(getpass.getuser(),socket.gethostname())
         recipients = ["support@nesi.org.nz"]

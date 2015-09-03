@@ -7,7 +7,7 @@ present and always comprising the first three lines of the article. -->
 # Description
 <!--This is a placeholder for a description. Do not edit.-->
 
-[Click here](http://www.example.com) to visit the home page.
+The home page is at [http://www.example.com](http://www.example.com).
 
 # Available modules
 <!--This is a placeholder for an automatically generated table. Do not edit.-->

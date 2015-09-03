@@ -358,6 +358,7 @@ for blurbfile in newstubs:
             with open(template, 'r') as mdtemplate:
                 for line in mdtemplate:
                     line = re.sub(r'^Title:\s+(.*)\n$', "Title: {}".format(packagename), line)
+                    line = re.sub(r'^The home page is at', "The {} home page is at".format(packagename), line)
                     line = re.sub(r"^<!--This is a placeholder for a description. Do not edit.-->$", tempblurb, line)
                     pbfh.write(line)
         subprocess.check_call(["git", "add", blurbfile], stdout=devnull_fh, stderr=subprocess.STDOUT)

@@ -1,13 +1,13 @@
 Category: Available Software
 Section: Stubs
-Title: Foo
+Title: <<PACKAGENAME>>
 <!-- The above lines, specifying the category, section and title, must be
 present and always comprising the first three lines of the article. -->
 
 # Description
 <!--This is a placeholder for a description. Do not edit.-->
 
-The home page is at [http://www.example.com](http://www.example.com).
+The <<PACKAGENAME>> home page is at [http://www.example.com](http://www.example.com).
 
 # Available modules
 <!--This is a placeholder for an automatically generated table. Do not edit.-->
@@ -30,19 +30,14 @@ support desk](mailto:support@nesi.org.nz).
 ```bash
 #!/bin/bash
 
-#SBATCH     --job-name=MyFooJob
-#SBATCH      --account=nesi99999
-#SBATCH         --time=01:00:00
-#SBATCH --cpus-per-task=1
-#SBATCH   --mem-per-cpu=4096
-#SBATCH       --workdir=/projects/nesi99999/MyFooJob
-#SBATCH        --output=MyFooJob.out
-#SBATCH         --error=MyFooJob.err
-#SBATCH     --mail-type=ALL
-#SBATCH     --mail-user=j.bloggs@example.com
-#SBATCH     --mail-user=jblo123@example.ac.nz
+#SBATCH --job-name      <<PACKAGENAME>>_job
+#SBATCH --account       nesi99999
+#SBATCH --time          01:00:00
+#SBATCH --mem-per-cpu   4G
+#SBATCH --output        <<PACKAGENAME>>_job.%j.out # Include the job ID in the names
+#SBATCH --error         <<PACKAGENAME>>_job.%j.err # of the output and error files
 
-module load Foo/1.2.3
+module load <<PACKAGENAME>>/1.2.3
 
 foo -bar MyInput.dat
 ```
@@ -52,19 +47,16 @@ foo -bar MyInput.dat
 ```bash
 #!/bin/bash
 
-#@ job_name = MyFooJob
-#@ account_no = nesi99999
-#@ class = General
+#@ job_name         = <<PACKAGENAME>>_job
+#@ account_no       = nesi99999
+#@ class            = General
 #@ wall_clock_limit = 01:00:00
-#@ job_type = serial
-#@ initialdir = /hpcf/working/nesi99999/MyFooJob
-#@ output = $(job_name).out
-#@ error = $(job_name).err
-#@ notification = always
-#@ notify_user = j.bloggs@example.com
+#@ initialdir       = /hpcf/working/nesi99999/<<PACKAGENAME>>_job
+#@ output           = $(job_name).$(jobid).out
+#@ error            = $(job_name).$(jobid).err
 #@ queue
 
-module load Foo/1.2.3
+module load <<PACKAGENAME>>/1.2.3
 
 foo -bar MyInput.dat
 ```
@@ -74,19 +66,17 @@ foo -bar MyInput.dat
 ```bash
 #!/bin/bash
 
-#@ job_name = MyFooJob
-#@ account_no = nesi99999
-#@ group = UC
-#@ class = p7linux
+#@ job_name         = <<PACKAGENAME>>_job
+#@ account_no       = nesi99999
+#@ group            = UC
+#@ class            = p7linux
 #@ wall_clock_limit = 01:00:00
-#@ initialdir = /hpc/scratch/nesi99999/MyFooJob
-#@ output = $(job_name).out
-#@ error = $(job_name).err
-#@ notification = always
-#@ notify_user = j.bloggs@example.com
+#@ initialdir       = /hpc/scratch/nesi99999/<<PACKAGENAME>>_job
+#@ output           = $(job_name).$(jobid).out
+#@ error            = $(job_name).$(jobid).err
 #@ queue
 
-module load Foo/1.2.3
+module load <<PACKAGENAME>>/1.2.3
 
 foo -bar MyInput.dat
 ```

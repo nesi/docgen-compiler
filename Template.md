@@ -56,6 +56,11 @@ foo -bar MyInput.dat
 #@ error            = $(job_name).$(jobid).err
 #@ queue
 
+# LoadLeveler has an annoying habit of transferring parts of the user's
+# environment as it existed at the time of submission to the job. Clear any
+# loaded modules.
+module purge
+
 module load <<PACKAGENAME>>/1.2.3
 
 foo -bar MyInput.dat
@@ -75,6 +80,11 @@ foo -bar MyInput.dat
 #@ output           = $(job_name).$(jobid).out
 #@ error            = $(job_name).$(jobid).err
 #@ queue
+
+# LoadLeveler has an annoying habit of transferring parts of the user's
+# environment as it existed at the time of submission to the job. Clear any
+# loaded modules.
+module purge
 
 module load <<PACKAGENAME>>/1.2.3
 

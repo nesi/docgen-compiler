@@ -319,10 +319,19 @@ newstubs = []
 curdir = os.getcwd()
 os.chdir(infodir)
 devnull_fh = open(os.devnull, 'w')
+
 # Start by ensuring that we're working on the master branch, to get
 # the published versions of things.
-subprocess.check_call(["git", "checkout", "master"], stdout=devnull_fh, stderr=subprocess.STDOUT)
-subprocess.check_call(["git", "pull"], stdout=devnull_fh, stderr=subprocess.STDOUT)
+branches = subprocess.check_output(["git", "branch"]).splitlines()
+for branch in branches:
+    unstarred = re.sub(r'^\* ', '', branch)
+    if branch == unstarred: continue
+    initial_branch = unstarred
+
+if initial_branch != "master":
+    print "Switching to the master branch ..."
+    subprocess.check_call(["git", "checkout", "master"], stdout=devnull_fh, stderr=subprocess.STDOUT)
+    subprocess.check_call(["git", "pull"], stdout=devnull_fh, stderr=subprocess.STDOUT)
 
 for blurbfile in sorted(os.listdir(blurbdir)):
     if not fnmatch.fnmatch(blurbfile, "*.md"):
@@ -368,7 +377,7 @@ for blurbfile in newstubs:
 
 # Finally, push to the remote and switch back to master.
 subprocess.check_call(["git", "push", "origin", draftsbranch], stdout=devnull_fh, stderr=subprocess.STDOUT)
-subprocess.check_call(["git", "checkout", "master"], stdout=devnull_fh, stderr=subprocess.STDOUT)
+subprocess.check_call(["git", "checkout", initial_branch], stdout=devnull_fh, stderr=subprocess.STDOUT)
 os.chdir(curdir)
 devnull_fh.close()
 

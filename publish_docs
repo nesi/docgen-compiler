@@ -7,6 +7,11 @@
 #
 # This script assembles the HTML table and Markdown file for each pa
 
+function get_abs_filename() {
+	# $1 : relative filename
+	echo "$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
+}
+
 progname=$(basename $0)
 tmpdir="/tmp/${progname}"
 olddir=$(pwd)
@@ -56,7 +61,6 @@ do
 	esac
 done
 
-# Ensure that some environment variables are set
 gitrepo=false
 if [ -z "${infodir}" ]
 then
@@ -66,10 +70,12 @@ elif [ ! -d "${infodir}" ]
 then
 	echo "${infodir}: not a directory"
 	exit 2
-elif [ -d "${infodir}/.git" ]
-then
-	echo "Note: ${infodir} is a Git repository"
-	gitrepo=true
+else
+       	if [ -d "${infodir}/.git" ]
+	then
+		gitrepo=true
+	fi
+	infodir=$(get_abs_filename "${infodir}")
 fi
 
 if [ -z "${versiontabledir}" ]
@@ -80,6 +86,8 @@ elif [ ! -d "${versiontabledir}" ]
 then
 	echo "${versiontabledir}: not a directory"
 	exit 2
+else
+	versiontabledir=$(get_abs_filename "${versiontabledir}")
 fi
 
 if [ -z "${zendeskapidir}" ]
@@ -90,6 +98,8 @@ elif [ ! -d "${zendeskapidir}" ]
 then
 	echo "${zendeskapidir}: not a directory"
 	exit 2
+else
+	zendeskapidir=$(get_abs_filename "${zendeskapidir}")
 fi
 
 # Test for the existence of a lockfile.
@@ -114,36 +124,65 @@ then
 	git pull
 fi
 
-for file in ${infodir}/*
+# Save the current time (when the upload is about to start)
+last_update="${infodir}/.last_update"
+if [ ! -f "${last_update}" ]
+then
+	echo "Note: No last update found -- running from the beginning of time."
+	echo "@0" > "${last_update}"
+fi
+lasttime=$(date -f "${last_update}" +%c)
+curtime=$(date +%s)
+
+find "${infodir}" \( ! -regex '.*/\..*' \) -type f -and -newermt "${lasttime}" -print0 | while read -r -d "" file
 do
 	# Get a package name (the file name minus the extension)
 	basefile=$(basename $file)
 	packagename=${basefile%.*}
 	extension=${basefile##*.}
+	category=$(head -1 ${file} | sed -e 's/^[Cc]ategory:[[:space:]]//')
 	versionfile=${versiontabledir}/${packagename}.html
 	to_upload=${tmpdir}/${basefile}
 
 	if [ "${extension}" != "md" ]
 	then
 		continue
-	elif [ ! -f ${versionfile} ]
+	elif [[ "${category}" == "Available Software" ]]
 	then
-		echo "error: no version table found for $packagename"
-		continue
+		if [ ! -f ${versionfile} ]
+		then
+			echo "error: no version table found for $packagename"
+			continue
+		else
+			echo "Finalising documentation for $packagename"
+			awk -v f="${versionfile}" 'BEGIN {while (getline < f) txt=txt $0 "\n"} /<!--This is a placeholder for an automatically generated table. Do not edit.-->/ {sub("<!--This is a placeholder for an automatically generated table. Do not edit.-->", txt)} 1' ${file} > ${to_upload}
+		fi
 	else
 		echo "Finalising documentation for $packagename"
-		awk -v f="${versionfile}" 'BEGIN {while (getline < f) txt=txt $0 "\n"} /<!--This is a placeholder for an automatically generated table. Do not edit.-->/ {sub("<!--This is a placeholder for an automatically generated table. Do not edit.-->", txt)} 1' ${file} > ${to_upload}
+		cat ${file} > ${to_upload}
 	fi
 done
 
-echo "Uploading software documentation to Zendesk ..."
-${zendeskapidir}/upload_article ${tmpdir}/*.md
-upload_status=$?
-if [ ${upload_status} -eq 0 ]
+
+if [ -n "$(find ${tmpdir} -maxdepth 1 -name "*.md" -print -quit)" ]
 then
-	echo "Upload complete."
+	echo "Uploading articles to Zendesk ..."
+	${zendeskapidir}/upload_article ${tmpdir}/*.md
+	upload_status=$?
+	if [ ${upload_status} -eq 0 ]
+	then
+		echo "Upload complete."
+		echo "@${curtime}" > "${last_update}"
+	else
+		echo "$progname: error: upload failed"
+	fi
 else
-	echo "$progname: error: upload failed"
+	echo "All Zendesk articles are apparently up to date. Nothing to do."
+	echo "If you believe this is not correct, please delete the file"
+	echo ""
+	echo "      ${last_update}"
+	echo ""
+	echo "and run this script again."
 fi
 
 # Change back to the original working directory and remove the temporary

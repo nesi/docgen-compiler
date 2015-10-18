@@ -4,6 +4,8 @@ Title: <<PACKAGENAME>>
 <!-- The above lines, specifying the category, section and title, must be
 present and always comprising the first three lines of the article. -->
 
+[TOC]
+
 # Description
 <!--This is a placeholder for a description. Do not edit.-->
 

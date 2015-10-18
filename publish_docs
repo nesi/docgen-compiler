@@ -7,6 +7,10 @@
 #
 # This script assembles the HTML table and Markdown file for each pa
 
+OK=0
+WARNING=1
+CRITICAL=2
+
 function get_abs_filename() {
 	# $1 : relative filename
 	echo "$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
@@ -22,7 +26,7 @@ ARGS=$(getopt -o i:v:z: -l "package-info-dir:,version-table-dir:,zendesk-api-dir
 #Bad arguments
 if [ $? -ne 0 ];
 then
-	exit 2
+	exit ${CRITICAL}
 fi
 
 eval set -- "$ARGS";
@@ -65,11 +69,11 @@ gitrepo=false
 if [ -z "${infodir}" ]
 then
 	echo "Please specify a package information directory using the -i flag"
-	exit 2
+	exit ${CRITICAL} 
 elif [ ! -d "${infodir}" ]
 then
 	echo "${infodir}: not a directory"
-	exit 2
+	exit ${CRITICAL}
 else
        	if [ -d "${infodir}/.git" ]
 	then
@@ -81,11 +85,11 @@ fi
 if [ -z "${versiontabledir}" ]
 then
 	echo "Please specify a version table directory using the -v flag"
-	exit 2
+	exit ${CRITICAL}
 elif [ ! -d "${versiontabledir}" ]
 then
 	echo "${versiontabledir}: not a directory"
-	exit 2
+	exit ${CRITICAL}
 else
 	versiontabledir=$(get_abs_filename "${versiontabledir}")
 fi
@@ -93,11 +97,11 @@ fi
 if [ -z "${zendeskapidir}" ]
 then
 	echo "Please specify a Zendesk API directory using the -z flag"
-	exit 2
+	exit ${CRITICAL}
 elif [ ! -d "${zendeskapidir}" ]
 then
 	echo "${zendeskapidir}: not a directory"
-	exit 2
+	exit ${CRITICAL}
 else
 	zendeskapidir=$(get_abs_filename "${zendeskapidir}")
 fi
@@ -111,7 +115,7 @@ then
 	echo "error: ${lockfile} exists."
 	echo "Check to make sure that no other instance of $progname is running."
 	echo "If necessary, remove ${lockfile} or ask an administrator to do so."
-	exit 1
+	exit ${CRITICAL}
 else
 	touch ${lockfile}
 fi
@@ -173,10 +177,14 @@ then
 	then
 		echo "Upload complete."
 		echo "@${curtime}" > "${last_update}"
+	elif [ ${upload_status} -eq 1 ]
+	then
+		echo "Upload complete, but some articles were skipped due to errors."
 	else
 		echo "$progname: error: upload failed"
 	fi
 else
+	upload_status=0
 	echo "All Zendesk articles are apparently up to date. Nothing to do."
 	echo "If you believe this is not correct, please delete the file"
 	echo ""
@@ -187,5 +195,5 @@ fi
 
 # Change back to the original working directory and remove the temporary
 # directory
-cd $olddir
-rm -r ${tmpdir}
+(cd $olddir && rm -r ${tmpdir}) || exit ${WARNING}
+exit ${upload_status}

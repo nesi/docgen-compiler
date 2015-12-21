@@ -378,10 +378,13 @@ for blurbfile in newstubs:
 # Finally, push to the remote and switch back to master.
 subprocess.check_call(["git", "push", "origin", draftsbranch], stdout=devnull_fh, stderr=subprocess.STDOUT)
 subprocess.check_call(["git", "checkout", initial_branch], stdout=devnull_fh, stderr=subprocess.STDOUT)
-os.chdir(curdir)
-devnull_fh.close()
 
 if any(version_notify.itervalues()):
+    # Modify the modification time for the affected info documents
+    # so publish_docs knows to refresh them
+    for pn, vn in version_notify.iteritems():
+        if vn:
+            os.utime(os.path.join(infodir, "{0}.md".format(pn)), None)
     try:
         sender = "{}@{}".format(getpass.getuser(),socket.gethostname())
         recipients = ["support@nesi.org.nz"]
@@ -395,6 +398,8 @@ The automatic process to generate version tables and documentation stubs has det
     except smtplib.SMTPException:
         warnings.append("Could not send an email to Zendesk requesting a version table refresh.")
 
+os.chdir(curdir)
+devnull_fh.close()
 os.rmdir(versiondir)
 os.rmdir(blurbdir)
 os.remove(lockfile)

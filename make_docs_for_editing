@@ -351,6 +351,8 @@ for blurbfile in sorted(os.listdir(blurbdir)):
 
 subprocess.check_call(["git", "fetch"], stdout=devnull_fh, stderr=subprocess.STDOUT)
 subprocess.check_call(["git", "checkout", draftsbranch], stdout=devnull_fh, stderr=subprocess.STDOUT)
+# Make sure the drafts branch is up to date with its own remote tracking branch
+subprocess.check_call(["git", "pull"], stdout=devull_fh, stderr=subprocess.STDOUT)
 subprocess.check_call(["git", "merge", "master", "-m", "Automatic merge from master"], stdout=devnull_fh, stderr=subprocess.STDOUT)
 
 for blurbfile in newstubs:

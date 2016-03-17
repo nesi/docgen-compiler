@@ -68,31 +68,6 @@ module load <<PACKAGENAME>>/1.2.3
 foo -bar MyInput.dat
 ```
 
-## Example script for the UC HPC Power7 cluster
-
-```bash
-#!/bin/bash
-
-#@ job_name         = <<PACKAGENAME>>_job
-#@ account_no       = nesi99999
-#@ group            = UC
-#@ class            = p7linux
-#@ wall_clock_limit = 01:00:00
-#@ initialdir       = /hpc/scratch/nesi99999/<<PACKAGENAME>>_job
-#@ output           = $(job_name).$(jobid).out
-#@ error            = $(job_name).$(jobid).err
-#@ queue
-
-# LoadLeveler has an annoying habit of transferring parts of the user's
-# environment as it existed at the time of submission to the job. Clear any
-# loaded modules.
-module purge
-
-module load <<PACKAGENAME>>/1.2.3
-
-foo -bar MyInput.dat
-```
-
 # Further notes
 
 **This section will not always be needed. Its purpose is to provide us with a

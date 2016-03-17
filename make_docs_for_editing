@@ -252,7 +252,8 @@ for mldir in automoddir, suppmoddir:
 """.format(module, machine))
             
                     with open(tempblurbfile, "a") as tbfh:
-                        tbfh.write("""## {} (no module) on {}
+                        tbfh.write("""
+## {} (no module) on {}
 
 {}""".format(module, machine, textwrap.wrap(blurb,80)))
                 else:
@@ -273,7 +274,8 @@ for mldir in automoddir, suppmoddir:
 """.format(module, machine))
             
                     with open(tempblurbfile, "a") as tbfh:
-                        tbfh.write("""## {} (module) on {}
+                        tbfh.write("""
+## {} (module) on {}
 
 {}""".format(module, machine, textwrap.wrap(blurb,80)))
 

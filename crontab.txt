@@ -23,4 +23,4 @@ MAILTO="support@nesi.org.nz"
 
 # min          hr  dom mon dow   command
    15          17    *   * 0-4   /home/brob695/code/docgen-compiler/update_module_lists -d /var/supplementary-modules > /dev/null
-   55          19    *   * 0-4   /home/brob695/code/docgen-compiler/make_docs_for_editing -i /home/brob695/zendesk-articles -v /var/app-version-tables -s /var/supplementary-modules -a /var/www/module-uploads -c
+   55          19    *   * 0-4   /home/brob695/code/docgen-compiler/make_docs_for_editing -i /home/brob695/zendesk-articles -v /var/www/app-version-tables -s /var/supplementary-modules -a /var/www/module-uploads -c

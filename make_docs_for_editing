@@ -119,6 +119,12 @@ if not os.path.isdir(os.path.join(infodir, ".git")):
     print "{}: not a Git repository".format(infodir)
     raise SystemExit(critical)
 
+docdir = os.path.join(infodir, "doc")
+if not os.path.isdir(docdir):
+    print "{} contains no \"doc\" subdirectory".format(infodir)
+    raise SystemExit(critical)
+
+
 if os.path.samefile(automoddir,suppmoddir):
     print "The values given to the -a and -s flags must point to different directories"
     raise SystemExit(critical)
@@ -340,7 +346,7 @@ for blurbfile in sorted(os.listdir(blurbdir)):
         warnings.append("Unexpected temporary file: {}".format(blurbfile))
         continue
     tempblurbpath = os.path.join(blurbdir, blurbfile)
-    permblurbpath = os.path.join(infodir, blurbfile)
+    permblurbpath = os.path.join(docdir, blurbfile)
 
     #if not cron:
     #    print "Making sure a documentation file exists for software package {} ...".format(packagename)
@@ -359,7 +365,7 @@ subprocess.check_call(["git", "merge", "master", "-m", "Automatic merge from mas
 
 for blurbfile in newstubs:
     tempblurbpath = os.path.join(blurbdir, blurbfile)
-    permblurbpath = os.path.join(infodir, blurbfile)
+    permblurbpath = os.path.join(docdir, blurbfile)
     (packagename, ext) = os.path.splitext(blurbfile)
 
     version_notify[packagename] = False
@@ -388,7 +394,7 @@ if any(version_notify.itervalues()):
     # so publish_docs knows to refresh them
     for pn, vn in version_notify.iteritems():
         if vn:
-            os.utime(os.path.join(infodir, "{0}.md".format(pn)), None)
+            os.utime(os.path.join(docdir, "{0}.md".format(pn)), None)
     try:
         sender = "{}@{}".format(getpass.getuser(),socket.gethostname())
         recipients = ["support@nesi.org.nz"]

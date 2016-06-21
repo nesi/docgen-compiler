@@ -63,7 +63,7 @@ versiondir = os.path.join(tmpdir, "versions")
 blurbdir = os.path.join(tmpdir, "blurbs")
 
 try:
-    opts, args = getopt.getopt(sys.argv[1:], "a:chi:m:s:tv:x:", ["automatic-modules-dir=", "cron", "help", "package-info-dir=", "mapping-file=", "supplementary-modules-dir=", "truncate", "version-table-dir=", "exclusion-file="])
+    opts, args = getopt.getopt(sys.argv[1:], "a:chi:m:s:tx:", ["automatic-modules-dir=", "cron", "help", "package-info-dir=", "mapping-file=", "supplementary-modules-dir=", "truncate", "exclusion-file="])
 except getopt.GetoptError as err:
     print str(err)
     usage()
@@ -85,8 +85,6 @@ for (opt, arg) in opts:
         suppmoddir = arg
     elif opt in ("-t", "--truncate"):
         truncate = True
-    elif opt in ("-v", "--version-table-dir"):
-        versiontabledir = arg
     elif opt in ("-x", "--exclusion-file"):
         exclusion_file = arg
     else:
@@ -98,9 +96,6 @@ if not automoddir:
 elif not suppmoddir:
     print """Please specify a directory containing supplementary module lists using the -s flag"""
     raise SystemExit(critical)
-elif not versiontabledir:
-    print "Please specify a directory to hold version tables using the -v flag"
-    raise SystemExit(critical)
 elif not infodir:
     print "Please specify a directory to hold package information using the -i flag"
     raise SystemExit(critical)
@@ -110,7 +105,7 @@ if os.path.lexists(tmpdir) and not os.path.isdir(tmpdir):
     print """{} exists but is not a directory. Please remove {} or ask an administrator to do so.""".format(tmpdir)
     raise SystemExit(critical)
 
-for d in (versiontabledir, suppmoddir, automoddir, infodir):
+for d in (suppmoddir, automoddir, infodir):
     if not os.path.isdir(d):
         print "{}: not a directory".format(d)
         raise SystemExit(critical)
@@ -123,7 +118,10 @@ docdir = os.path.join(infodir, "doc")
 if not os.path.isdir(docdir):
     print "{} contains no \"doc\" subdirectory".format(infodir)
     raise SystemExit(critical)
-
+versiontabledir = os.path.join(infodir, "versions")
+if not os.path.isdir(versiontabledir):
+    print "{} contains no \"versions\" subdirectory".format(infodir)
+    raise SystemExit(critical)
 
 if os.path.samefile(automoddir,suppmoddir):
     print "The values given to the -a and -s flags must point to different directories"
@@ -303,26 +301,6 @@ for tempversionpart in sorted(os.listdir(versiondir)):
     
     os.remove(tempversionpath)
 
-version_notify = {}
-for tempversionwhole in sorted(os.listdir(versiondir)):
-    if not fnmatch.fnmatch(tempversionwhole, "*.html"):
-        warnings.append("Unexpected temporary file: {}".format(tempversionwhole))
-        continue
-    tempversionpath = os.path.join(versiondir, tempversionwhole)
-    (packagename, ext) = os.path.splitext(tempversionwhole)
-
-    permversionfile = os.path.join(versiontabledir, "{}.html".format(packagename))
-    if not os.path.isfile(permversionfile):
-        info.append("Creating a new table of available versions for package {}".format(packagename))
-        os.rename(tempversionpath, permversionfile)
-    # Compare the old (permanent) and new ("temporary") files
-    elif not filecmp.cmp(tempversionpath, permversionfile, shallow=False):
-        info.append("Available versions of {} have changed. The documentation will be updated.".format(packagename))
-        os.rename(tempversionpath, permversionfile)
-        version_notify[packagename] = True
-    else:
-        os.remove(tempversionpath)
-
 newstubs = []
 curdir = os.getcwd()
 os.chdir(infodir)
@@ -340,6 +318,33 @@ if initial_branch != "master":
     info.append("Switching to the master branch ...")
     subprocess.check_call(["git", "checkout", "master"], stdout=devnull_fh, stderr=subprocess.STDOUT)
     subprocess.check_call(["git", "pull"], stdout=devnull_fh, stderr=subprocess.STDOUT)
+
+version_notify = {}
+for tempversionwhole in sorted(os.listdir(versiondir)):
+    if not fnmatch.fnmatch(tempversionwhole, "*.html"):
+        warnings.append("Unexpected temporary file: {}".format(tempversionwhole))
+        continue
+    tempversionpath = os.path.join(versiondir, tempversionwhole)
+    (packagename, ext) = os.path.splitext(tempversionwhole)
+
+    permversionfile = os.path.join(versiontabledir, "{}.html".format(packagename))
+    if not os.path.isfile(permversionfile):
+        info.append("Creating a new table of available versions for package {}".format(packagename))
+        os.rename(tempversionpath, permversionfile)
+        subprocess.check_call(["git", "add", permversionfile], stdout=devnull_fh, stderr=subprocess.STDOUT)
+        subprocess.check_call(["git", "commit", "-m", "New version table for package {}".format(packagename), permversionfile], stdout=devnull_fh, stderr=subprocess.STDOUT)
+    # Compare the old (permanent) and new ("temporary") files
+    elif not filecmp.cmp(tempversionpath, permversionfile, shallow=False):
+        info.append("Available versions of {} have changed. The documentation will be updated.".format(packagename))
+        os.rename(tempversionpath, permversionfile)
+        subprocess.check_call(["git", "add", permversionfile], stdout=devnull_fh, stderr=subprocess.STDOUT)
+        subprocess.check_call(["git", "commit", "-m", "Updated version table for package {}".format(packagename), permversionfile], stdout=devnull_fh, stderr=subprocess.STDOUT)
+        version_notify[packagename] = True
+    else:
+        os.remove(tempversionpath)
+
+# Push to the remote.
+subprocess.check_call(["git", "push", "origin", "master"], stdout=devnull_fh, stderr=subprocess.STDOUT)
 
 for blurbfile in sorted(os.listdir(blurbdir)):
     if not fnmatch.fnmatch(blurbfile, "*.md"):
@@ -385,8 +390,10 @@ for blurbfile in newstubs:
 
     os.remove(tempblurbpath)
 
-# Finally, push to the remote and switch back to master.
+# Push to the remote.
 subprocess.check_call(["git", "push", "origin", draftsbranch], stdout=devnull_fh, stderr=subprocess.STDOUT)
+
+# Switch back to the starting branch.
 subprocess.check_call(["git", "checkout", initial_branch], stdout=devnull_fh, stderr=subprocess.STDOUT)
 
 if any(version_notify.itervalues()):

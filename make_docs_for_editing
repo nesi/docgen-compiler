@@ -385,7 +385,7 @@ for blurbfile in newstubs:
                     line = re.sub(r'<<PACKAGENAME>>', packagename, line)
                     line = re.sub(r"^<!--This is a placeholder for a description. Do not edit.-->$", tempblurb, line)
                     pbfh.write(line)
-        subprocess.check_call(["git", "add", blurbfile], stdout=devnull_fh, stderr=subprocess.STDOUT)
+        subprocess.check_call(["git", "add", permblurbpath], stdout=devnull_fh, stderr=subprocess.STDOUT)
         subprocess.check_call(["git", "commit", "-m", "New documentation stub for package {}".format(packagename), blurbfile], stdout=devnull_fh, stderr=subprocess.STDOUT)
 
     os.remove(tempblurbpath)

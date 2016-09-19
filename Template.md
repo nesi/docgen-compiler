@@ -30,7 +30,7 @@ support desk](mailto:support@nesi.org.nz).
 ## Example script for the Pan cluster
 
 ```bash
-#!/bin/bash
+#!/bin/bash -e
 
 #SBATCH --job-name      <<PACKAGENAME>>_job
 #SBATCH --account       nesi99999
@@ -47,7 +47,7 @@ foo -bar MyInput.dat
 ## Example script for the Fitzroy cluster
 
 ```bash
-#!/bin/bash
+#!/bin/bash -e
 
 #@ job_name         = <<PACKAGENAME>>_job
 #@ account_no       = nesi99999

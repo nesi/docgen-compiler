@@ -328,20 +328,26 @@ for tempversionwhole in sorted(os.listdir(versiondir)):
     (packagename, ext) = os.path.splitext(tempversionwhole)
 
     permversionfile = os.path.join(versiontabledir, "{}.html".format(packagename))
-    if not os.path.isfile(permversionfile):
-        info.append("Creating a new table of available versions for package {}".format(packagename))
-        os.rename(tempversionpath, permversionfile)
-        subprocess.check_call(["git", "add", permversionfile], stdout=devnull_fh, stderr=subprocess.STDOUT)
-        subprocess.check_call(["git", "commit", "-m", "New version table for package {}".format(packagename), permversionfile], stdout=devnull_fh, stderr=subprocess.STDOUT)
-    # Compare the old (permanent) and new ("temporary") files
-    elif not filecmp.cmp(tempversionpath, permversionfile, shallow=False):
-        info.append("Available versions of {} have changed. The documentation will be updated.".format(packagename))
-        os.rename(tempversionpath, permversionfile)
-        subprocess.check_call(["git", "add", permversionfile], stdout=devnull_fh, stderr=subprocess.STDOUT)
-        subprocess.check_call(["git", "commit", "-m", "Updated version table for package {}".format(packagename), permversionfile], stdout=devnull_fh, stderr=subprocess.STDOUT)
-        version_notify[packagename] = True
+    for existing_pv_file in os.listdir(versiontabledir):
+        vt_html_lc = "{0}.html".format(packagename.lower())
+        if vt_html_lc == existing_pv_file.lower():
+            warnings.append("{0}: stub with different case already exists: {1}".format(packagename, existing_pv_file))
+            break
     else:
-        os.remove(tempversionpath)
+        if not os.path.isfile(permversionfile):
+            info.append("Creating a new table of available versions for package {}".format(packagename))
+            os.rename(tempversionpath, permversionfile)
+            subprocess.check_call(["git", "add", permversionfile], stdout=devnull_fh, stderr=subprocess.STDOUT)
+            subprocess.check_call(["git", "commit", "-m", "New version table for package {}".format(packagename), permversionfile], stdout=devnull_fh, stderr=subprocess.STDOUT)
+        # Compare the old (permanent) and new ("temporary") files
+        elif not filecmp.cmp(tempversionpath, permversionfile, shallow=False):
+            info.append("Available versions of {} have changed. The documentation will be updated.".format(packagename))
+            os.rename(tempversionpath, permversionfile)
+            subprocess.check_call(["git", "add", permversionfile], stdout=devnull_fh, stderr=subprocess.STDOUT)
+            subprocess.check_call(["git", "commit", "-m", "Updated version table for package {}".format(packagename), permversionfile], stdout=devnull_fh, stderr=subprocess.STDOUT)
+            version_notify[packagename] = True
+        else:
+            os.remove(tempversionpath)
 
 # Push to the remote.
 subprocess.check_call(["git", "push", "origin", "master"], stdout=devnull_fh, stderr=subprocess.STDOUT)

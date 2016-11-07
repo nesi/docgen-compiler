@@ -327,10 +327,11 @@ for tempversionwhole in sorted(os.listdir(versiondir)):
     tempversionpath = os.path.join(versiondir, tempversionwhole)
     (packagename, ext) = os.path.splitext(tempversionwhole)
 
-    permversionfile = os.path.join(versiontabledir, "{}.html".format(packagename))
+    vt_html = "{0}.html".format(packagename)
+    vt_html_lc = "{0}.html".format(packagename.lower())
+    permversionfile = os.path.join(versiontabledir, vt_html)
     for existing_pv_file in os.listdir(versiontabledir):
-        vt_html_lc = "{0}.html".format(packagename.lower())
-        if vt_html_lc == existing_pv_file.lower():
+        if vt_html_lc == existing_pv_file.lower() and vt_html != existing_pv_file:
             warnings.append("{0}: stub with different case already exists: {1}".format(packagename, existing_pv_file))
             os.remove(tempversionpath)
             break

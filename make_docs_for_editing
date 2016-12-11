@@ -332,7 +332,7 @@ for tempversionwhole in sorted(os.listdir(versiondir)):
     permversionfile = os.path.join(versiontabledir, vt_html)
     for existing_pv_file in os.listdir(versiontabledir):
         if vt_html_lc == existing_pv_file.lower() and vt_html != existing_pv_file:
-            warnings.append("{0}: stub with different case already exists: {1}".format(packagename, existing_pv_file))
+            warnings.append("{0}: version table with different case already exists: {1}".format(packagename, existing_pv_file))
             os.remove(tempversionpath)
             break
     else:
@@ -381,22 +381,29 @@ for blurbfile in newstubs:
     permblurbpath = os.path.join(docdir, blurbfile)
     (packagename, ext) = os.path.splitext(blurbfile)
 
-    version_notify[packagename] = False
-    if not os.path.isfile(permblurbpath):
-        info.append("Creating a new documentation stub for {}".format(packagename))
-        with open(tempblurbpath, 'r') as tbfh:
-            tempblurb = tbfh.read()
-        with open(permblurbpath, 'a') as pbfh:
-            with open(template, 'r') as mdtemplate:
-                for line in mdtemplate:
-                    #line = re.sub(r'^Title:\s+(.*)\n$', "Title: {}".format(packagename), line)
-                    line = re.sub(r'<<PACKAGENAME>>', packagename, line)
-                    line = re.sub(r"^<!--This is a placeholder for a description. Do not edit.-->$", tempblurb, line)
-                    pbfh.write(line)
-        subprocess.check_call(["git", "add", permblurbpath], stdout=devnull_fh, stderr=subprocess.STDOUT)
-        subprocess.check_call(["git", "commit", "-m", "New documentation stub for package {}".format(packagename), permblurbpath], stdout=devnull_fh, stderr=subprocess.STDOUT)
+    blurbfile_lc = "{0}.md".format(packagename.lower())
+    for existing_blurbfile in os.listdir(docdir):
+        if blurbfile_lc == existing_blurbfile.lower() and blurbfile != existing_blurbfile:
+            warnings.append("{0}: stub with different case already exists: {1}".format(packagename, existing_blurbfile))
+            os.remove(tempblurbpath)
+            break
+    else:
+        version_notify[packagename] = False
+        if not os.path.isfile(permblurbpath):
+            info.append("Creating a new documentation stub for {}".format(packagename))
+            with open(tempblurbpath, 'r') as tbfh:
+                tempblurb = tbfh.read()
+            with open(permblurbpath, 'a') as pbfh:
+                with open(template, 'r') as mdtemplate:
+                    for line in mdtemplate:
+                        #line = re.sub(r'^Title:\s+(.*)\n$', "Title: {}".format(packagename), line)
+                        line = re.sub(r'<<PACKAGENAME>>', packagename, line)
+                        line = re.sub(r"^<!--This is a placeholder for a description. Do not edit.-->$", tempblurb, line)
+                        pbfh.write(line)
+            subprocess.check_call(["git", "add", permblurbpath], stdout=devnull_fh, stderr=subprocess.STDOUT)
+            subprocess.check_call(["git", "commit", "-m", "New documentation stub for package {}".format(packagename), permblurbpath], stdout=devnull_fh, stderr=subprocess.STDOUT)
 
-    os.remove(tempblurbpath)
+        os.remove(tempblurbpath)
 
 # Push to the remote.
 subprocess.check_call(["git", "push", "origin", draftsbranch], stdout=devnull_fh, stderr=subprocess.STDOUT)

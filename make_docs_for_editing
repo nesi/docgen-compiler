@@ -317,7 +317,8 @@ for branch in branches:
 if initial_branch != "master":
     info.append("Switching to the master branch ...")
     subprocess.check_call(["git", "checkout", "master"], stdout=devnull_fh, stderr=subprocess.STDOUT)
-    subprocess.check_call(["git", "pull"], stdout=devnull_fh, stderr=subprocess.STDOUT)
+info.append("Updating the master branch ...")
+subprocess.check_call(["git", "pull"], stdout=devnull_fh, stderr=subprocess.STDOUT)
 
 version_notify = {}
 for tempversionwhole in sorted(os.listdir(versiondir)):
